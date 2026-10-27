@@ -218,3 +218,14 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# HestonLab local market data and credentials
+outputs/
+work/
+sources/
+*.parquet
+*.duckdb
+*.sqlite*
+*.dbn*
+*.csv.zst
+.databento_key
