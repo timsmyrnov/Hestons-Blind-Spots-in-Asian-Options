@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "hestonlab-data"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["pandas==3.1.0", "pyarrow==26.0.0", "duckdb==1.4.2", "databento==0.88.0", "pdfplumber==0.11.9", "zstandard==0.25.0"]
+[project.optional-dependencies]
+dev = ["pytest==8.4.2", "ruff==0.14.2"]
+[project.scripts]
+hestonlab-data = "hestonlab.data.__main__:main"
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+[tool.ruff.lint.per-file-ignores]
+"src/hestonlab/data/acquisition.py" = ["F405", "F403"]
