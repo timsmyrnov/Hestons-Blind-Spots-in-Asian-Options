@@ -86,7 +86,7 @@ def build_states(root):
         root / "ao_contract_fixing_bridge.parquet",
     )
     con.execute("""CREATE TEMP TABLE cutoffs AS SELECT observation_date,contract_month,
-       min(publication_timestamp) cutoff_timestamp FROM ao
+       min(publication_timestamp) cutoff_timestamp,min(stat_ts_recv) cutoff_timestamp_raw FROM ao
        GROUP BY observation_date,contract_month""")
     # Revisions are screened BEFORE ranking. Deleted records cannot resurrect a
     # prior mark: latest final record wins, then the action is evaluated.
@@ -95,11 +95,11 @@ def build_states(root):
         update_action FROM (SELECT o.*,s.fixing_date,s.reference_contract_id,
         r.settlement_price,r.update_action,
         row_number() OVER(PARTITION BY o.observation_date,o.contract_month,s.fixing_date
-        ORDER BY r.publication_timestamp DESC NULLS LAST) rn
+        ORDER BY r.publication_timestamp_raw DESC NULLS LAST,r.source_sequence DESC) rn
         FROM cutoffs o JOIN schedule s ON o.contract_month=s.averaging_month
         AND s.fixing_date<=o.observation_date
         LEFT JOIN revisions r ON r.contract_id=s.reference_contract_id AND r.trade_date=s.fixing_date
-        AND r.is_final AND r.publication_timestamp<=o.cutoff_timestamp)
+        AND r.is_final AND r.publication_timestamp_raw<=o.cutoff_timestamp_raw)
         WHERE rn=1""")
     con.execute("""CREATE TEMP TABLE accrued AS SELECT observation_date,contract_month,
         count_if(settlement_price IS NOT NULL AND update_action=1) known_fixing_count,
@@ -110,9 +110,9 @@ def build_states(root):
        SELECT o.observation_date,o.contract_month,r.contract_id,r.settlement_price,
        r.expiration,r.update_action,
        row_number() OVER(PARTITION BY o.observation_date,o.contract_month,r.contract_id
-       ORDER BY r.publication_timestamp DESC) rn FROM cutoffs o JOIN revisions r
+       ORDER BY r.publication_timestamp_raw DESC,r.source_sequence DESC) rn FROM cutoffs o JOIN revisions r
        ON r.trade_date=o.observation_date AND r.root='CL' AND r.is_final
-       AND r.publication_timestamp<=o.cutoff_timestamp AND r.expiration>=o.observation_date)
+       AND r.publication_timestamp_raw<=o.cutoff_timestamp_raw AND r.expiration>=o.observation_date)
        WHERE rn=1 AND update_action=1 AND settlement_price IS NOT NULL""")
     con.execute("""CREATE TEMP TABLE curves AS SELECT observation_date,contract_month,
        contract_id front_cl_contract_id,settlement_price front_cl_settlement FROM (

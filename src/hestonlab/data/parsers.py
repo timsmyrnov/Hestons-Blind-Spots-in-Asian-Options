@@ -32,10 +32,12 @@ def month_name(s):
 def csvwrite(p, rows, fields=None):
     p = Path(p)
     p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w", newline="") as f:
+    temp = p.with_suffix(p.suffix + ".tmp")
+    with temp.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=fields or list(rows[0]), extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
+    temp.replace(p)
 
 
 def base(**kw):

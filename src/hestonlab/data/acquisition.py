@@ -256,7 +256,7 @@ def normalize(root):
     types["usable_settlement"] = pa.bool_()
     types["stat_flags"] = pa.int64()
     schema = pa.schema([(k, types[k]) for k in BASE_FIELDS + EXTRA])
-    pw = pq.ParquetWriter(root / "ao_historical_panel.parquet", schema, compression="zstd")
+    pw = pq.ParquetWriter(root / "ao_historical_panel.parquet.tmp", schema, compression="zstd")
     vector_schema = pa.schema(
         [
             (k, types[k])
@@ -264,9 +264,9 @@ def normalize(root):
         ]
     )
     vw = pq.ParquetWriter(
-        root / "ao_daily_price_vectors.parquet", vector_schema, compression="zstd"
+        root / "ao_daily_price_vectors.parquet.tmp", vector_schema, compression="zstd"
     )
-    f = (root / "ao_historical_panel.csv").open("w", newline="")
+    f = (root / "ao_historical_panel.csv.tmp").open("w", newline="")
     writer = csv.DictWriter(f, fieldnames=BASE_FIELDS + EXTRA)
     writer.writeheader()
 
@@ -361,6 +361,12 @@ def normalize(root):
     f.close()
     pw.close()
     vw.close()
+    for name in [
+        "ao_historical_panel.parquet",
+        "ao_daily_price_vectors.parquet",
+        "ao_historical_panel.csv",
+    ]:
+        (root / (name + ".tmp")).replace(root / name)
     con.close()
     dbpath.unlink(missing_ok=True)
     groups = defaultdict(list)

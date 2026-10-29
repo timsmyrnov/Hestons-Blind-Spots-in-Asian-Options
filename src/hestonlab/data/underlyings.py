@@ -2,11 +2,13 @@
 
 from pathlib import Path
 import json
+import hashlib
 import re
 import pandas as pd
 import duckdb
 import pyarrow as pa
 from .pipeline import write, literal
+from .csvio import csv_relation
 from .parsers import month_name, num
 
 
@@ -50,9 +52,7 @@ def ingest(root):
     definitions = list((root / "sources/underlying_definitions").glob("*.csv"))
     if not definitions:
         raise FileNotFoundError("Matching underlying definitions not downloaded")
-    con.read_csv([str(x) for x in definitions], union_by_name=True, all_varchar=True).create_view(
-        "defs"
-    )
+    csv_relation(con, definitions).create_view("defs")
     con.execute("""CREATE TEMP TABLE contracts AS SELECT DISTINCT
         instrument_id,raw_symbol,
         CASE WHEN raw_symbol LIKE 'CSX%' THEN 'CSX' ELSE 'CL' END root,
@@ -74,9 +74,13 @@ def ingest(root):
     parts.mkdir(exist_ok=True)
     for p in files:
         target = parts / (p.parent.name + "_" + p.name.replace(".csv.zst", ".parquet"))
-        if target.exists():
-            continue
-        con.read_csv(str(p), all_varchar=True).create_view("raw", replace=True)
+        fingerprint = hashlib.sha256(p.read_bytes()).hexdigest()
+        receipt = target.with_suffix(".source.json")
+        if target.exists() and receipt.exists():
+            old = json.loads(receipt.read_text())
+            if old.get("sha256") == fingerprint and old.get("normalizer_version") == 2:
+                continue
+        csv_relation(con, p).create_view("raw", replace=True)
         write(
             con,
             f"""SELECT DISTINCT substr(ts_ref,1,10)::DATE trade_date,
@@ -86,12 +90,21 @@ def ingest(root):
             raw_source_row source_record_reference,
             stat_flags::INT stat_flags,(stat_flags::INT & 1)=1 is_final,
             update_action::INT update_action,ts_recv::TIMESTAMPTZ publication_timestamp,
+            ts_recv publication_timestamp_raw,try_cast(sequence AS BIGINT) source_sequence,
             {literal(str(p.relative_to(root)))} source_file,
-            'GLBX.MDP3 statistics' source,'USD/barrel' price_unit
+            'GLBX.MDP3 statistics' AS "source",'USD/barrel' price_unit
             FROM (SELECT *,row_number() OVER ()+1 raw_source_row FROM raw) WHERE stat_type::INT=3 AND (stat_flags::INT & 12)=0
             AND regexp_full_match(symbol,'(CL|CSX)[FGHJKMNQUVXZ][0-9]{{1,2}}')
             AND try_cast(ts_ref AS TIMESTAMPTZ) IS NOT NULL""",
             target,
+        )
+        receipt.write_text(
+            json.dumps(
+                dict(
+                    sha256=fingerprint, normalizer_version=2, source_file=str(p.relative_to(root))
+                ),
+                indent=2,
+            )
         )
         print("Underlying revisions", p.name, flush=True)
     con.read_parquet(str(parts / "*.parquet")).create_view("parts")
@@ -101,7 +114,7 @@ def ingest(root):
     write(
         con,
         """SELECT * EXCLUDE(rn) FROM (SELECT *, row_number() OVER(
-        PARTITION BY trade_date,contract_id ORDER BY is_final DESC,publication_timestamp DESC) rn
+        PARTITION BY trade_date,contract_id ORDER BY is_final DESC,publication_timestamp_raw DESC,source_sequence DESC) rn
         FROM revisions WHERE contract_id IS NOT NULL) WHERE rn=1
         ORDER BY trade_date,contract_id""",
         root / "cl_futures_settlements.parquet",
@@ -128,6 +141,11 @@ def ingest(root):
         ON s.trade_date::DATE=f.trade_date AND s.contract_month=f.contract_month AND f.root='CL' """
     ).df()
     checks.to_csv(root / "evidence/cl_exchange_crosscheck.csv", index=False)
+    comparable = checks.vendor_settlement.notna()
+    if (checks.loc[comparable, "difference"].abs() > 1e-8).any():
+        raise ValueError(
+            "CL settlement differs from original exchange file; inspect crosscheck before research joins"
+        )
     (root / "evidence/underlying_ingestion.json").write_text(
         json.dumps(
             dict(

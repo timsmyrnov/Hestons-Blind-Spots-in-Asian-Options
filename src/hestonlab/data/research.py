@@ -75,16 +75,21 @@ def load_ao_panel(start_date, end_date, filters=None, root=None):
                 "selected_cutoffs",
                 pa.Table.from_pandas(
                     panel[
-                        ["observation_date", "contract_month", "cutoff_timestamp"]
+                        [
+                            "observation_date",
+                            "contract_month",
+                            "cutoff_timestamp",
+                            "cutoff_timestamp_raw",
+                        ]
                     ].drop_duplicates()
                 ),
             )
             futures = con.sql("""SELECT * EXCLUDE(rn) FROM (SELECT c.observation_date,
                c.contract_month averaging_month,r.*,
                row_number() OVER(PARTITION BY c.observation_date,c.contract_month,r.contract_id
-               ORDER BY r.publication_timestamp DESC) rn
+               ORDER BY r.publication_timestamp_raw DESC,r.source_sequence DESC) rn
                FROM selected_cutoffs c JOIN revisions r ON r.trade_date=c.observation_date
-               AND r.publication_timestamp<=c.cutoff_timestamp AND r.is_final AND r.root='CL')
+               AND r.publication_timestamp_raw<=c.cutoff_timestamp_raw AND r.is_final AND r.root='CL')
                WHERE rn=1 AND update_action=1 ORDER BY observation_date,averaging_month,expiration""").df()
         schedule = None
         if (root / "ao_fixing_schedule.parquet").exists():
