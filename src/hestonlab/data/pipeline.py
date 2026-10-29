@@ -26,6 +26,12 @@ def build(root):
     con.execute("SET memory_limit='2GB'")
     stamp = datetime.now(timezone.utc).isoformat()
     con.read_parquet(str(root / "ao_historical_panel.parquet")).create_view("legacy")
+    condition_file = root / "evidence/databento_dataset_condition_exceptions.csv"
+    if condition_file.exists():
+        con.read_csv(str(condition_file), all_varchar=True).create_view("bad_capture_days")
+        degraded = "EXISTS(SELECT 1 FROM bad_capture_days b WHERE b.date=substr(stat_ts_recv,1,10))"
+    else:
+        degraded = "false"
     con.execute(f"""CREATE TEMP TABLE obs AS SELECT *,
         trade_date::DATE observation_date,
         'NYMEX:AO:'||contract_month||':'||call_put||':'||printf('%.8f',strike) contract_id,
@@ -35,6 +41,8 @@ def build(root):
         volume trade_volume, NULL::DOUBLE bid_price, NULL::DOUBLE ask_price,
         NULL::DOUBLE last_trade_price, NULL::BOOLEAN nominal_indicator,
         'latest_final_retrospective' revision_policy,
+        {degraded} source_capture_degraded,
+        expiration_status='explicit_definition' explicit_contract_metadata,
         CASE WHEN trade_date<'2020-04-22' THEN 'pre_change_model_unverified'
         WHEN trade_date<'2020-05-18' THEN 'Bachelier_notice20-171'
         ELSE 'Curran_notice20-198_later_history_not_exhaustive' END methodology_regime,
@@ -103,12 +111,15 @@ def build(root):
     con.execute("""CREATE TEMP TABLE q3 AS SELECT *,
       coalesce(strike_slope < lag(strike_slope) OVER(PARTITION BY observation_date,contract_month,call_put ORDER BY strike)-0.02,false) convexity_flag
       FROM q2""")
+    con.execute("""CREATE TEMP TABLE q4 AS SELECT *,
+       coalesce(settlement_price=lag(settlement_price) OVER(PARTITION BY contract_id ORDER BY observation_date),false)
+       same_price_previous_observed_day FROM q3""")
     state = root / "ao_fixing_state.parquet"
     if state.exists():
         con.read_parquet(str(state)).create_view("states")
         join = """LEFT JOIN states s ON q.observation_date=s.observation_date AND q.contract_month=s.contract_month"""
         extra = """s.known_fixing_count,s.accrued_fixing_sum,s.remaining_fixing_count,
-          s.missing_elapsed_fixings,s.fixing_calendar_verified,s.cutoff_timestamp,
+          s.missing_elapsed_fixings,s.fixing_calendar_verified,s.cutoff_timestamp,s.cutoff_timestamp_raw,
           s.curve_available,s.remaining_curve_complete,s.front_cl_contract_id,s.front_cl_settlement,
           s.underlying_state_complete"""
         eligible = "coalesce(s.underlying_state_complete,false)"
@@ -116,19 +127,20 @@ def build(root):
         join = ""
         extra = """NULL::BIGINT known_fixing_count,NULL::DOUBLE accrued_fixing_sum,
           NULL::BIGINT remaining_fixing_count,NULL::BIGINT missing_elapsed_fixings,
-          false fixing_calendar_verified,NULL::TIMESTAMPTZ cutoff_timestamp,
+          false fixing_calendar_verified,NULL::TIMESTAMPTZ cutoff_timestamp,NULL::VARCHAR cutoff_timestamp_raw,
           false curve_available,false remaining_curve_complete,NULL::VARCHAR front_cl_contract_id,
           NULL::DOUBLE front_cl_settlement,false underlying_state_complete"""
         eligible = "false"
     write(
         con,
         f"""SELECT q.*, {extra}, NULL::DOUBLE interest_rate,
-        date_diff('day',observation_date,expiration_date)/365.0 time_to_expiry_years,
-        usable_settlement AND observation_date<=expiration_date AND NOT monotonicity_flag
-        AND NOT convexity_flag AND {eligible} research_eligible,
-        usable_settlement AND observation_date<=expiration_date mark_eligible,
+        date_diff('day',q.observation_date,q.expiration_date)/365.0 time_to_expiry_years,
+        usable_settlement AND q.observation_date<=q.expiration_date AND NOT monotonicity_flag
+        AND NOT convexity_flag AND NOT source_capture_degraded AND explicit_contract_metadata
+        AND {eligible} research_eligible,
+        usable_settlement AND q.observation_date<=q.expiration_date mark_eligible,
         'Settlements are exchange marks; actual flag does not prove a trade' price_interpretation
-        FROM q3 q {join} ORDER BY observation_date,expiration_date,call_put,strike""",
+        FROM q4 q {join} ORDER BY q.observation_date,q.expiration_date,q.call_put,q.strike""",
         root / "ao_daily_research_panel.parquet",
     )
     con.read_parquet(str(root / "ao_daily_research_panel.parquet")).create_view("panel")
@@ -157,6 +169,9 @@ def coverage(con, root):
       count_if(trade_volume IS NULL) missing_volume,
       count_if(monotonicity_flag) monotonicity_flags,
       count_if(convexity_flag) convexity_flags,
+      count_if(source_capture_degraded) degraded_capture_rows,
+      count_if(same_price_previous_observed_day) unchanged_price_rows,
+      count_if(NOT explicit_contract_metadata) same_month_metadata_rows,
       count_if(observation_date>expiration_date) expired_observations,
       count_if(price_type='official_final_theoretical') theoretical_final_marks,
       count_if(mark_eligible AND (open_interest>0 OR trade_volume>0)) liquidity_supported_marks,
@@ -184,6 +199,9 @@ def coverage(con, root):
       count(DISTINCT contract_month) contract_months,count(DISTINCT strike) strikes,
       min(observation_date)::VARCHAR first_date,max(observation_date)::VARCHAR last_date,
       count_if(monotonicity_flag) monotonicity_flags,count_if(convexity_flag) convexity_flags,
+      count_if(source_capture_degraded) degraded_capture_rows,
+      count_if(same_price_previous_observed_day) unchanged_price_rows,
+      count_if(NOT explicit_contract_metadata) same_month_metadata_rows,
       count_if(observation_date>expiration_date) expired_observations,
       count_if(price_type='official_final_theoretical') theoretical_final_marks,
       count_if(bid_price IS NOT NULL OR ask_price IS NOT NULL) quoted_observations,

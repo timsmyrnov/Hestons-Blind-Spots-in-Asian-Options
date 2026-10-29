@@ -269,6 +269,10 @@ def test_state_pipeline_asof_end_to_end(tmp_path):
             )
         )
     f = pd.DataFrame(rows)
+    f["publication_timestamp_raw"] = f.publication_timestamp.dt.strftime(
+        "%Y-%m-%dT%H:%M:%S.000000000Z"
+    )
+    f["source_sequence"] = 0
     f.to_parquet(tmp_path / "cl_futures_settlements.parquet")
     f.to_parquet(tmp_path / "cl_futures_settlement_revisions.parquet")
     pd.DataFrame(
@@ -287,6 +291,11 @@ def test_state_pipeline_asof_end_to_end(tmp_path):
             ),
         ]
     ).to_parquet(tmp_path / "ao_observations.parquet")
+    ao_fixture = pd.read_parquet(tmp_path / "ao_observations.parquet")
+    ao_fixture["stat_ts_recv"] = ao_fixture.publication_timestamp.dt.strftime(
+        "%Y-%m-%dT%H:%M:%S.000000000Z"
+    )
+    ao_fixture.to_parquet(tmp_path / "ao_observations.parquet")
     build_states(tmp_path)
     state = pd.read_parquet(tmp_path / "ao_fixing_state.parquet").sort_values("observation_date")
     assert state.iloc[0].known_fixing_count == 0
@@ -312,3 +321,73 @@ def test_liquidity_filter_cannot_escape_date_or_side():
     assert not frame.empty
     assert (frame.observation_date.dt.date.astype(str) == "2024-06-14").all()
     assert (frame.call_put == "P").all()
+
+
+def test_csv_schema_change_is_not_silently_accepted(tmp_path):
+    from hestonlab.data.csvio import csv_relation
+
+    a = tmp_path / "a.csv"
+    b = tmp_path / "b.csv"
+    a.write_text("price,symbol\n-37.63,CLK0\n")
+    b.write_text("price,wrong_column\n10,CLM0\n")
+    c = duckdb.connect()
+    assert csv_relation(c, a).fetchone() == ("-37.63", "CLK0")
+    with pytest.raises(ValueError, match="schema change"):
+        csv_relation(c, [a, b])
+
+
+def test_missing_raw_archive_cannot_replace_valid_panel(tmp_path):
+    from hestonlab.data.acquisition import normalize
+
+    (tmp_path / "evidence").mkdir()
+    (tmp_path / "evidence/databento_download.json").write_text(
+        json.dumps({"files": ["sources/absent.csv.zst"]})
+    )
+    panel = tmp_path / "ao_historical_panel.parquet"
+    panel.write_bytes(b"existing_valid_artifact")
+    with pytest.raises(FileNotFoundError, match="bulk source files are absent"):
+        normalize(tmp_path)
+    assert panel.read_bytes() == b"existing_valid_artifact"
+
+
+def test_nanosecond_cutoff_cannot_admit_later_revision():
+    schedule = pd.DataFrame(
+        dict(
+            fixing_date=["2020-04-20"],
+            reference_contract_id=["CL:2020-05"],
+            calendar_verified=[True],
+        )
+    )
+    revisions = pd.DataFrame(
+        [
+            ("2020-04-20", "CL:2020-05", -37.63, "2020-04-20T19:00:00.000000099Z", True, 1),
+            ("2020-04-20", "CL:2020-05", 999, "2020-04-20T19:00:00.000000101Z", True, 1),
+        ],
+        columns=[
+            "trade_date",
+            "contract_id",
+            "settlement_price",
+            "publication_timestamp",
+            "is_final",
+            "update_action",
+        ],
+    )
+    state = accrued_state(schedule, revisions, "2020-04-20", "2020-04-20T19:00:00.000000100Z")
+    assert state["accrued_fixing_sum"] == -37.63
+
+
+@requires_archive
+def test_downloaded_underlyings_match_exchange_and_preserve_negative_price():
+    import json
+    import duckdb
+
+    report = json.loads((ROOT / "evidence/underlying_ingestion.json").read_text())
+    assert report["unmapped_revision_records"] == 0
+    assert report["matched_exchange_sample"] == report["exchange_sample_rows"] == 130
+    con = duckdb.connect()
+    row = con.execute(
+        "SELECT settlement_price,is_final FROM read_parquet(?) WHERE root='CL' AND contract_month='2020-05' AND trade_date='2020-04-20'",
+        [str(ROOT / "cl_futures_settlements.parquet")],
+    ).fetchone()
+    con.close()
+    assert row == (-37.63, False)  # Preserve the actual terminal value and vendor final flag.

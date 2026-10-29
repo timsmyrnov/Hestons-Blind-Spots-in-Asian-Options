@@ -1,0 +1,18 @@
+{
+  "records": 1220927,
+  "prototype_complete_records": 1088385.0,
+  "dates": 1255,
+  "fully_validated_records": 0.0,
+  "first_date": "2021-01-04",
+  "last_date": "2025-12-31",
+  "missing_rate": 0.0,
+  "rate_observations": 1742,
+  "reference_overlap_quarantined": 1,
+  "terminal_months_reconciled": 80,
+  "generated_utc": "2026-10-29T17:07:44.070156+00:00",
+  "prototype_vector_counts": {
+    "days_ge6": 1244,
+    "days_ge10": 1244,
+    "days_ge20": 1244
+  }
+}

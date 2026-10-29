@@ -3,6 +3,7 @@
 from pathlib import Path
 import duckdb
 from .pipeline import write
+from .csvio import csv_relation
 
 
 def build_reference_versions(root):
@@ -12,9 +13,7 @@ def build_reference_versions(root):
         raise FileNotFoundError("AO definitions absent")
     con = duckdb.connect()
     con.execute("SET enable_progress_bar=false")
-    con.read_csv(
-        [str(p) for p in files], all_varchar=True, union_by_name=True, filename=True
-    ).create_view("defs")
+    csv_relation(con, files, filename=True).create_view("defs")
     write(
         con,
         """SELECT DISTINCT

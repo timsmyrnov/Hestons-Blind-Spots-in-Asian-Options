@@ -101,17 +101,22 @@ def build_fixing_schedule(ao_contract, observation_date, root=None, cutoff=None)
         if cutoff is None:
             con.read_parquet(str(root / "ao_fixing_state.parquet")).create_view("states")
             match = con.execute(
-                "SELECT cutoff_timestamp FROM states WHERE observation_date=?::DATE AND contract_month=?",
+                "SELECT cutoff_timestamp,cutoff_timestamp_raw FROM states WHERE observation_date=?::DATE AND contract_month=?",
                 [d, month],
             ).fetchone()
             if not match or match[0] is None:
                 raise ValueError(
                     "No observed AO publication cutoff; supply an explicit aware cutoff"
                 )
-            cutoff = match[0]
+            cutoff = match[1] or match[0]
         cutoff = pd.Timestamp(cutoff)
         if cutoff.tzinfo is None:
             raise ValueError("cutoff must be timezone-aware")
+        cutoff = cutoff.tz_convert("UTC")
+        cutoff_raw = (
+            cutoff.strftime("%Y-%m-%dT%H:%M:%S")
+            + f".{cutoff.microsecond * 1000 + cutoff.nanosecond:09d}Z"
+        )
         con.read_parquet(str(root / "ao_fixing_schedule.parquet")).create_view("schedule")
         con.read_parquet(str(root / "cl_futures_settlement_revisions.parquet")).create_view(
             "revisions"
@@ -124,10 +129,10 @@ def build_fixing_schedule(ao_contract, observation_date, root=None, cutoff=None)
           s.fixing_date>?::DATE future_fixing
           FROM schedule s LEFT JOIN LATERAL (
           SELECT * FROM revisions r WHERE r.contract_id=s.reference_contract_id
-          AND r.trade_date=s.fixing_date AND r.is_final AND r.publication_timestamp<=?::TIMESTAMPTZ
-          ORDER BY publication_timestamp DESC LIMIT 1) r ON true
+          AND r.trade_date=s.fixing_date AND r.is_final AND r.publication_timestamp_raw<=?
+          ORDER BY publication_timestamp_raw DESC,source_sequence DESC LIMIT 1) r ON true
           WHERE s.averaging_month=? ORDER BY s.fixing_date""",
-            [d, d, d, d, str(cutoff), month],
+            [d, d, d, d, cutoff_raw, month],
         ).df()
     finally:
         con.close()
