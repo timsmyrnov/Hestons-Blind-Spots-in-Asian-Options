@@ -1,0 +1,12 @@
+input,location_or_provider,status,interpretation
+AO price vectors,train_native_inputs.parquet;test_native_inputs.parquet,acquired,"Positive final labels, source capture/row and masks retained"
+"Strike, side, expiry, multiplier, currency",contract_metadata.parquet,acquired,Monthly explicit definitions; not complete daily metadata validity
+CL futures curve for every remaining fixing,fixing_and_forward_inputs.parquet,acquired_provisional,Per-date forward prices; positive future forwards required
+Known fixing sum/count and remaining schedule,native inputs + fixing_and_forward_inputs.parquet,acquired_provisional,Copied Good Fridays excluded; terminal final bits unresolved
+SOFR rate and baseline discount factor,sofr_history.csv + native inputs,acquired_with_assumption,Flat last-available overnight SOFR; not full OIS curve
+Time convention and payoff unit,model_defaults.json,specified_default,ACT/365F variance; ACT/360 discount daily compounding; USD/barrel
+Cashflow payment date,model_defaults.json,assumed_default,Expiry assumed; independent premium/payment lag verification pending
+"v0,kappa,theta,sigma,rho",estimated by Tim's pricer/calibrator,fit_outputs,Not missing vendor data; not supplied as true market labels
+Synthetic labeled prices for Lorenzo,generated from pricer and known parameter draws,not_generated,Requires tested Asian pricer; not a vendor dataset
+Train/test dates and fixed grid,split_manifest.json;training_selected_coordinates.csv,specified_and_exported,"June training, July test; coordinates selected from June only"
+Full maturity-specific discount curve,CME SOFR OIS data route in defaults guide,not_acquired,Upgrade/sensitivity before strong model-failure conclusions; no purchase made

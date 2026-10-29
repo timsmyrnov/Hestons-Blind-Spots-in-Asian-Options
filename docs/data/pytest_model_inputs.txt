@@ -1,0 +1,29 @@
+.......................................                                  [100%]
+=============================== warnings summary ===============================
+tests/test_data.py: 12 warnings
+  /Users/benjamink./Documents/Codex/2026-10-27/files-pasted-by-the-user-hestonlab/src/hestonlab/data/research.py:64: Pandas4Warning: The inplace keyword in DataFrame.drop is deprecated and will be removed in a future version (PDEP-8).
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#deprecation-inplace for more details.
+    ).df()
+
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_liquidity_filter_cannot_escape_date_or_side
+tests/test_data.py::test_liquidity_filter_cannot_escape_date_or_side
+tests/test_data.py::test_liquidity_filter_cannot_escape_date_or_side
+  /Users/benjamink./Documents/Codex/2026-10-27/files-pasted-by-the-user-hestonlab/src/hestonlab/data/research.py:69: Pandas4Warning: The inplace keyword in DataFrame.drop is deprecated and will be removed in a future version (PDEP-8).
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#deprecation-inplace for more details.
+    ).df()
+
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_loader_native_contracts_and_determinism
+tests/test_data.py::test_liquidity_filter_cannot_escape_date_or_side
+  /Users/benjamink./Documents/Codex/2026-10-27/files-pasted-by-the-user-hestonlab/src/hestonlab/data/research.py:93: Pandas4Warning: The inplace keyword in DataFrame.drop is deprecated and will be removed in a future version (PDEP-8).
+  See https://pandas.pydata.org/docs/dev/whatsnew/v3.1.0.html#deprecation-inplace for more details.
+    WHERE rn=1 AND update_action=1 ORDER BY observation_date,averaging_month,expiration""").df()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+39 passed, 24 warnings in 4.17s

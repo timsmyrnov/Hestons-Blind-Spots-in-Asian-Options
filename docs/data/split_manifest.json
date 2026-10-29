@@ -1,0 +1,31 @@
+{
+  "train": {
+    "records": 16453,
+    "n_dates": 19,
+    "first_date": "2024-06-03",
+    "last_date": "2024-06-28",
+    "grid_observed_rows": 613,
+    "grid_expected_rows": 646
+  },
+  "test": {
+    "records": 18254,
+    "n_dates": 22,
+    "first_date": "2024-07-01",
+    "last_date": "2024-07-31",
+    "grid_observed_rows": 698,
+    "grid_expected_rows": 748
+  },
+  "date_overlap": 0,
+  "coordinate_count": 34,
+  "selection": "August/September/October 2024 contracts; strikes 60 to 100 in $5 steps; >=80% June coverage; no July selection",
+  "price_imputation": "none",
+  "purpose": "retrospective held-out market-price pilot, not a causal trading backtest",
+  "fully_validated": false,
+  "test_policy": "Freeze pricing convention, coordinate selection, surrogate weights, parameter search bounds, scaling and hyperparameters before scoring July. Frozen-parameter transfer and per-day manifold projection must be reported separately.",
+  "caveats": [
+    "Terminal feed final flags unresolved.",
+    "Historical metadata/calendar and current revised rates are retrospective.",
+    "Some underlying fixing periods and contract IDs span both months; dates are disjoint, but economic exposures are not independent.",
+    "No Heston pricer, parameter estimates or synthetic training prices are fabricated."
+  ]
+}

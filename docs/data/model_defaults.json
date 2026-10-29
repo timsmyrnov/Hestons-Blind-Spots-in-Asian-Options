@@ -1,0 +1,55 @@
+{
+  "version": "ao_common_factor_heston_flat_sofr_v1",
+  "status": "proposed_research_baseline_not_team_ratified",
+  "pricing_measure": "risk_neutral_deterministic_rates",
+  "futures_dynamics": "dF(u,T)/F(u,T)=sqrt(v(u))*dW_F(u), common factor across T",
+  "variance_dynamics": "dv=kappa*(theta-v)*du+sigma*sqrt(v)*dW_v; corr(dW_F,dW_v)=rho",
+  "free_parameters": [
+    "v0",
+    "kappa",
+    "theta",
+    "sigma",
+    "rho"
+  ],
+  "fixed_conditioning_inputs": [
+    "CL_curve",
+    "strike",
+    "fixing_schedule",
+    "known_fixing_sum",
+    "known_fixing_count",
+    "discount_factor",
+    "valuation_time",
+    "expiry_time"
+  ],
+  "discount_convention": "flat last-available SOFR, ACT/360 daily compounding; not an OIS term curve",
+  "discount_formula": "D=(1+SOFR_percent/100/360)^(-calendar_days)",
+  "variance_time_basis": "ACT/365F",
+  "valuation": "retrospective reference-date EOD; not a tradable point-in-time backtest",
+  "payment_default": "expiry; premium/payment settlement lag not independently verified",
+  "price_unit": "USD/barrel",
+  "contract_multiplier": 1000,
+  "baseline_dates": [
+    "2021-01-01",
+    "2025-12-31"
+  ],
+  "maximum_calendar_days_to_expiry": 183,
+  "negative_forward_policy": "exclude from positive multiplicative baseline; preserve raw stress data",
+  "parameter_constraints": "v0,theta,kappa,sigma>0; -1<rho<1; Feller is a reported diagnostic, not an automatic calibration constraint",
+  "simulation": "joint CL paths with common Brownian factors; discrete arithmetic fixings; convergence-tested variance simulation required",
+  "limitations": [
+    "Perfect proportional co-movement across CL maturities is a restrictive modeling assumption.",
+    "Missing terminal final flags remain unresolved; prototype completeness is not research validation.",
+    "SOFR flat-curve and payment-date sensitivities required before attributing residuals to Heston.",
+    "Rates are revised historical downloads; original-vintage publication timestamps are not available.",
+    "No synthetic labeled Heston training data or pricer is supplied by this data module."
+  ],
+  "training_period": [
+    "2024-06-01",
+    "2024-06-30"
+  ],
+  "heldout_test_period": [
+    "2024-07-01",
+    "2024-07-31"
+  ],
+  "split_manifest": "split_manifest.json"
+}

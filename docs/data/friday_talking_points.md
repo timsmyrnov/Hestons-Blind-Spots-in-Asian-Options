@@ -1,0 +1,7 @@
+# Three-minute Friday update
+
+**First minute — evidence.** We acquired real CME WTI Asian-option data rather than substituting another instrument: 5,221,594 option/day records, including 5,153,872 positive final marks over 1,715 dates. There are 156 contract months. We independently extracted 3,986 CME observations and every overlapping settlement matches. Calls and puts, missing fields, theoretical marks and zero prices remain explicit.
+
+**Second minute — use and limits.** AO pays on the arithmetic monthly average of nearby CL settlements. We downloaded expiry-specific CL plus CSX monthly financial futures. The 130 independently checked CL prices all match. We preserve accrued fixing counts and sums, schedules and publication cutoffs. Expiry-day records lack the vendor final bit; 80 of 81 available monthly averages reconcile after clock/holiday screening; February 2020 still disagrees, and the strict final-only research subset is zero. The fixed June/July pilot avoids using the unresolved terminal records as accrued inputs. The broader settlement panel is already usable for descriptive surface work.
+
+**Third minute — decisions.** Tim should specify dynamics, discounting, strike/maturity scope and treatment of settlement regimes. Lorenzo and Tim should agree coordinates, missingness and error scaling. Ben will resolve terminal flags, roll and calendar exceptions and confirm teammate data entitlement. The code and public sample are in draft PR #1 on our shared repository. No new purchase is needed just to investigate these discrepancies.
