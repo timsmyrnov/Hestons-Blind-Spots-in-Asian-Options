@@ -9,6 +9,7 @@ The research instrument is CME WTI Average Price Options: clearing code **AO**, 
 - [Data workflow and Python interface](docs/data/README.md)
 - [Units, contract identity, state and quality masks](docs/data/ao_data_dictionary.md)
 - [Actual public CME sample records](data/samples/ao_historical_sample.csv)
+- [Experimental June-only Heston Monte Carlo calibration](docs/heston_monte_carlo.md)
 - [Friday readiness brief](docs/data/HestonLab_Friday_October_30_AO_Data_Readiness.pdf)
 
 ```bash

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 name = "hestonlab-data"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["pandas==3.1.0", "pyarrow==26.0.0", "duckdb==1.4.2", "databento==0.88.0", "pdfplumber==0.11.9", "zstandard==0.25.0"]
+dependencies = ["numpy==2.5.4", "pandas==3.1.0", "pyarrow==26.0.0", "duckdb==1.4.2", "databento==0.88.0", "pdfplumber==0.11.9", "zstandard==0.25.0"]
 [project.optional-dependencies]
 dev = ["pytest==8.4.2", "ruff==0.14.2"]
 [project.scripts]
