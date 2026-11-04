@@ -229,3 +229,6 @@ sources/
 *.dbn*
 *.csv.zst
 .databento_key
+
+# Private June integration call notes contain vendor-derived price examples
+docs/research/2026-11-03-june-integration-brief.md
