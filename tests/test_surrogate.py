@@ -14,6 +14,7 @@ from hestonlab.surrogate import (  # noqa: E402
     Surrogate,
     SurrogateMLP,
     TrainConfig,
+    compare_to_benchmark,
     contract_fingerprint,
     evaluate,
     independent_benchmark,
@@ -118,14 +119,35 @@ def test_training_rejects_data_from_another_contract_set(tiny):
         train(train_data, GRID[:-1], FAST)
 
 
-def test_independent_benchmark_uses_a_different_stream(tiny):
+def test_independent_benchmark_uses_two_streams_unlike_the_labels(tiny):
     _, test_data, model, _ = tiny
-    report = independent_benchmark(model, GRID, test_data, n_points=4, paths=1024)
-    assert report["points"] == 4
-    assert report["benchmark_monte_carlo"]["seed"] != MC.seed
-    assert report["benchmark_monte_carlo"]["paths"] == 1024
+    report = independent_benchmark(model, GRID, test_data, n_points=32, paths=1024)
+    seeds = [c["seed"] for c in report["benchmark_monte_carlo"]]
+    assert report["points"] == 32 and len(set(seeds)) == 2 and MC.seed not in seeds
+    assert all(c["paths"] == 1024 for c in report["benchmark_monte_carlo"])
+    s = report["surrogate_vs_benchmark"]
+    assert s["rmse_noise_corrected_usd_per_bbl"] <= s["rmse_raw_usd_per_bbl"]
+    assert sum(d["points"] for d in s["by_v0_decile"]) == 32
     with pytest.raises(ValueError, match="different random stream"):
-        independent_benchmark(model, GRID, test_data, n_points=4, paths=1024, seed=MC.seed)
+        independent_benchmark(model, GRID, test_data, 4, 1024, seeds=(MC.seed, 99))
+    with pytest.raises(ValueError, match="two different"):
+        independent_benchmark(model, GRID, test_data, 4, 1024, seeds=(99, 99))
+
+
+def test_benchmark_noise_subtraction_recovers_known_error():
+    rng = np.random.default_rng(0)
+    truth = rng.normal(10, 2, size=(4000, 5))
+    v0 = rng.uniform(0.001, 1, size=4000)
+    a = truth + rng.normal(0, 0.05, size=truth.shape)  # benchmark noise 0.05 per stream
+    b = truth + rng.normal(0, 0.05, size=truth.shape)
+    predicted = truth + rng.normal(0, 0.02, size=truth.shape)  # true error 0.02
+    out = compare_to_benchmark(predicted, a, b, v0)
+    assert out["rmse_noise_corrected_usd_per_bbl"] == pytest.approx(0.02, rel=0.05)
+    assert out["rmse_raw_usd_per_bbl"] == pytest.approx(np.hypot(0.02, 0.05 / np.sqrt(2)), rel=0.05)
+    assert out["benchmark_noise_rms_usd_per_bbl"] == pytest.approx(0.05 / np.sqrt(2), rel=0.05)
+    assert len(out["by_v0_decile"]) == 10
+    for d in out["by_v0_decile"]:
+        assert d["rmse_noise_corrected_usd_per_bbl"] == pytest.approx(0.02, rel=0.2)
 
 
 def test_jacobian_has_one_row_per_contract_and_matches_finite_differences(tiny):
@@ -210,3 +232,28 @@ def test_pipeline_refuses_git_tracked_output_location():
     with pytest.raises(ValueError, match="tracked by git"):
         check_output_location(repo / "docs" / "surrogate_results")
     check_output_location(repo / "outputs" / "surrogate" / "anything")
+
+
+def test_flat_direction_check_moves_match_jacobian_for_tiny_steps(tiny):
+    from hestonlab.surrogate import flat_direction_check
+
+    model = tiny[2]
+    h = 1e-4
+    out = flat_direction_check(model, GRID, MC, n_points=2, steps=(h,), paths=512)
+    assert len(out["points"]) == 2
+    assert {c["seed"] for c in out["monte_carlo"]}.isdisjoint({MC.seed})
+    scaler = model.input_scaler
+    for point in out["points"]:
+        assert len(point["moves"]) == 6  # 3 directions x (+h, -h)
+        move = {(m["direction"], m["step"]): m["surrogate_rms_move_usd_per_bbl"]
+                for m in point["moves"]}
+        # The flattest direction is never steeper than kappa or theta alone.
+        assert move[("flattest", h)] <= min(move[("kappa_only", h)], move[("theta_only", h)])
+        # A tiny kappa step moves prices by h * |dP/dkappa| (RMS over contracts).
+        u = torch.as_tensor(scaler.to_unit(list(point["parameters"].values())))
+        jac = torch.func.jacrev(model.prices_from_unit)(u).detach().numpy()
+        expected = h * np.linalg.norm(jac[:, 1]) / np.sqrt(len(GRID))
+        assert move[("kappa_only", h)] == pytest.approx(expected, rel=0.02)
+    with pytest.raises(ValueError, match="neither the labels"):
+        flat_direction_check(model, GRID, MC, n_points=1, steps=(h,), paths=512,
+                             seeds=(MC.seed, 5))

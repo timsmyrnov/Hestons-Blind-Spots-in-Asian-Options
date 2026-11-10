@@ -300,30 +300,77 @@ def evaluate(model, data):
     }
 
 
-def independent_benchmark(model, contracts, test_data, n_points=256, paths=65536, seed=None):
-    """Re-price test points with a DIFFERENT random stream and many more paths.
+def compare_to_benchmark(predicted, stream_a, stream_b, v0):
+    """Error of `predicted` against the average of two independent benchmark streams.
 
-    Surrogate-vs-benchmark measures the network against (nearly) noise-free Monte Carlo.
-    Labels-vs-benchmark shows how much of that is the training stream's own MC noise.
+    a - b contains only benchmark noise, so mean((a - b)^2) / 4 estimates the noise
+    variance of their average. Subtracting it from the raw MSE estimates the error
+    against the noise-free Monte Carlo price ("truth" for the pricer, not the market).
+    Medians and maxima cannot be corrected this way and still include benchmark noise.
+    """
+    predicted, a, b = (np.asarray(x, dtype=float) for x in (predicted, stream_a, stream_b))
+    v0 = np.asarray(v0, dtype=float)
+    average = (a + b) / 2
+
+    def block(rows):
+        diff = predicted[rows] - average[rows]
+        mse = float(np.mean(diff**2))
+        noise = float(np.mean((a[rows] - b[rows]) ** 2) / 4)
+        return {
+            "points": int(rows.sum()),
+            "rmse_noise_corrected_usd_per_bbl": float(np.sqrt(max(mse - noise, 0.0))),
+            "rmse_raw_usd_per_bbl": float(np.sqrt(mse)),
+            "median_abs_error_usd_per_bbl": float(np.median(np.abs(diff))),
+            "max_abs_error_usd_per_bbl": float(np.abs(diff).max()),
+            "benchmark_noise_rms_usd_per_bbl": float(np.sqrt(noise)),
+        }
+
+    edges = np.quantile(v0, np.linspace(0, 1, 11))
+    bins = np.clip(np.searchsorted(edges, v0, side="right") - 1, 0, 9)
+    return {
+        **block(np.ones(len(v0), dtype=bool)),
+        "by_v0_decile": [
+            {"v0_range": [float(edges[i]), float(edges[i + 1])], **block(bins == i)}
+            for i in range(10)
+            if (bins == i).any()
+        ],
+    }
+
+
+def independent_benchmark(model, contracts, test_data, n_points=256, paths=65536, seeds=None):
+    """Re-price test points with TWO independent random streams and many more paths.
+
+    Neither stream is the labels' stream. Comparing the two streams measures the
+    benchmark's own noise, which is then subtracted (see compare_to_benchmark).
+    Surrogate-vs-benchmark is surrogate approximation error; labels-vs-benchmark shows
+    how much of it is the training stream's own Monte Carlo noise.
     """
     model.check_contracts(contracts)
     label_config = _config_from_data(test_data)
-    seed = label_config.seed + INDEPENDENT_SEED_OFFSET if seed is None else seed
-    if seed == label_config.seed:
+    if seeds is None:
+        seeds = (
+            label_config.seed + INDEPENDENT_SEED_OFFSET,
+            label_config.seed + 2 * INDEPENDENT_SEED_OFFSET,
+        )
+    if len(seeds) != 2 or len(set(seeds)) != 2:
+        raise ValueError("Benchmark needs two different random streams")
+    if label_config.seed in seeds:
         raise ValueError("Benchmark must use a different random stream from the labels")
-    config = MonteCarloConfig(paths, label_config.max_step_years, seed)
+    configs = [MonteCarloConfig(paths, label_config.max_step_years, s) for s in seeds]
     params = np.asarray(test_data["parameters"])[:n_points]
-    bench, bench_se = price_points(contracts, params, config)
+    (a, se_a), (b, se_b) = (price_points(contracts, params, c) for c in configs)
     labels = np.asarray(test_data["prices"])[:n_points]
+    se = np.concatenate([se_a, se_b])
     return {
-        "what": "surrogate approximation error vs independent-stream Monte Carlo "
-        "(not model error)",
+        "what": "surrogate approximation error vs two-stream independent Monte Carlo, "
+        "benchmark noise subtracted (not model error)",
         "points": len(params),
-        "benchmark_monte_carlo": asdict(config),
-        "surrogate_vs_benchmark": error_summary(model(params), bench),
-        "training_stream_labels_vs_benchmark": error_summary(labels, bench),
-        "benchmark_mc_se_mean_usd_per_bbl": float(bench_se.mean()),
-        "benchmark_mc_se_max_usd_per_bbl": float(bench_se.max()),
+        "benchmark_monte_carlo": [asdict(c) for c in configs],
+        "stream_to_stream_rmse_usd_per_bbl": float(np.sqrt(np.mean((a - b) ** 2))),
+        "surrogate_vs_benchmark": compare_to_benchmark(model(params), a, b, params[:, 0]),
+        "training_stream_labels_vs_benchmark": compare_to_benchmark(labels, a, b, params[:, 0]),
+        "benchmark_mc_se_mean_usd_per_bbl": float(se.mean()),
+        "benchmark_mc_se_max_usd_per_bbl": float(se.max()),
     }
 
 
@@ -390,6 +437,117 @@ def jacobian_check(model, n_points=2048, seed=2):
     return report, arrays
 
 
+def flat_direction_check(
+    model, contracts, label_config, n_points=6, steps=(0.1, 0.2), paths=65536, seeds=None,
+    sobol_seed=3,
+):
+    """Is the surrogate's flattest Jacobian direction flat in Monte Carlo too?
+
+    At interior points, step along the surrogate's flattest direction, and along kappa
+    alone and theta alone as controls, by the same distance in scaled coordinates. Each
+    step is re-priced by the surrogate and by two independent high-path Monte Carlo
+    streams. Within a stream every step reuses the same random numbers; kappa and theta
+    do not change how those numbers enter the price, so these differences are smooth
+    and precise. Agreement between the two streams shows the Monte Carlo moves are
+    not noise; agreement with the surrogate shows the network's flatness is real.
+    """
+    model.check_contracts(contracts)
+    if seeds is None:
+        seeds = tuple(label_config.seed + k * INDEPENDENT_SEED_OFFSET for k in (3, 4))
+    if len(set(seeds)) != 2 or label_config.seed in seeds:
+        raise ValueError("Need two different random streams, neither the labels' stream")
+    configs = [MonteCarloConfig(paths, label_config.max_step_years, s) for s in seeds]
+    scaler = model.input_scaler
+    candidates = scaler.to_unit(sample_parameters(256, sobol_seed))
+    reach = max(steps)
+    inside = ((candidates > reach) & (candidates < 1 - reach)).all(axis=1)
+    if inside.sum() < n_points:
+        raise ValueError("Steps too large to stay inside the parameter box")
+    points = candidates[inside][:n_points]
+    times = np.array(sorted({t for c in contracts for t in c.fixing_times}))
+    k_axis, t_axis = PARAMETER_NAMES.index("kappa"), PARAMETER_NAMES.index("theta")
+    results = []
+    for u in points:
+        jac = torch.func.jacrev(model.prices_from_unit)(torch.as_tensor(u, dtype=DTYPE))
+        _, singular, vh = torch.linalg.svd(jac.detach(), full_matrices=False)
+        flat = vh[-1].numpy()
+        flat = flat if flat[k_axis] >= 0 else -flat  # fix the sign: kappa up
+        directions = {"flattest": flat, "kappa_only": np.eye(5)[k_axis],
+                      "theta_only": np.eye(5)[t_axis]}
+        moves = [(name, s * h) for name in directions for h in steps for s in (-1, 1)]
+        units = np.array([u] + [u + h * directions[name] for name, h in moves])
+        params = scaler.from_unit(units)
+        surrogate = model(params)
+        mc = [price_points(contracts, params, c)[0] for c in configs]
+        variance = _mean_expected_variance(params, times)
+
+        def rms_move(prices, i):
+            return float(np.sqrt(np.mean((prices[i] - prices[0]) ** 2)))
+
+        rows = []
+        for i, (name, h) in enumerate(moves, start=1):
+            rows.append({
+                "direction": name,
+                "step": float(h),
+                "parameters": dict(zip(PARAMETER_NAMES, params[i].round(6).tolist())),
+                "surrogate_rms_move_usd_per_bbl": rms_move(surrogate, i),
+                "mc_rms_move_usd_per_bbl": [rms_move(m, i) for m in mc],
+                "mean_expected_variance_relative_change": float(variance[i] / variance[0] - 1),
+            })
+        results.append({
+            "parameters": dict(zip(PARAMETER_NAMES, params[0].round(6).tolist())),
+            "flattest_direction": dict(zip(PARAMETER_NAMES, flat.round(4).tolist())),
+            "surrogate_singular_values": singular.numpy().tolist(),
+            # Level noise of one stream, for scale (CRN step differences are far smaller).
+            "mc_level_noise_rms_usd_per_bbl": float(
+                np.sqrt(np.mean((mc[0][0] - mc[1][0]) ** 2) / 2)
+            ),
+            "moves": rows,
+        })
+    return {
+        "what": "Monte Carlo re-pricing along the SURROGATE's flattest direction, with "
+        "kappa-only and theta-only steps of equal length as controls; RMS price move "
+        "per contract in USD/bbl",
+        "monte_carlo": [asdict(c) for c in configs],
+        "steps_scaled_units": list(steps),
+        "points": results,
+        "summary": _flat_summary(results, max(steps)),
+    }
+
+
+def _mean_expected_variance(params, times):
+    """Heston E[average variance over (0, t)], averaged over the fixing times. Explains
+    the flat direction: prices of short averages depend mostly on this one number."""
+    v0, kappa, theta = params[:, :1], params[:, 1:2], params[:, 2:3]
+    decay = (1 - np.exp(-kappa * times)) / (kappa * times)
+    return (theta + (v0 - theta) * decay).mean(axis=1)
+
+
+def _flat_summary(results, step):
+    def at(direction, key):
+        out = []
+        for r in results:
+            for m in r["moves"]:
+                if m["direction"] == direction and m["step"] == step:
+                    out.append(m[key])
+        return np.array(out)
+
+    flat_mc, kappa_mc = at("flattest", "mc_rms_move_usd_per_bbl"), at(
+        "kappa_only", "mc_rms_move_usd_per_bbl")
+    theta_mc = at("theta_only", "mc_rms_move_usd_per_bbl")
+    flat_sur = at("flattest", "surrogate_rms_move_usd_per_bbl")
+    flat_mean = flat_mc.mean(axis=1)
+    return {
+        "step": step,
+        "median_mc_move_flattest": float(np.median(flat_mean)),
+        "median_mc_move_kappa_only": float(np.median(kappa_mc.mean(axis=1))),
+        "median_mc_move_theta_only": float(np.median(theta_mc.mean(axis=1))),
+        "median_surrogate_move_flattest": float(np.median(flat_sur)),
+        "max_stream_disagreement_flattest": float(np.abs(flat_mc[:, 0] - flat_mc[:, 1]).max()),
+        "median_surrogate_minus_mc_flattest": float(np.median(flat_sur - flat_mean)),
+    }
+
+
 def _quantiles(values):
     q = np.quantile(values, [0, 0.01, 0.1, 0.5, 0.9, 1])
     return dict(zip(("min", "p01", "p10", "median", "p90", "max"), q.tolist()))
@@ -426,8 +584,11 @@ def plot_learning_curve(rows, benchmark, path):
     ax.axhline(rows[-1]["label_mc_se_mean_usd_per_bbl"], color="grey", ls=":",
                label="mean MC SE of labels")
     if benchmark:
-        ax.axhline(benchmark["surrogate_vs_benchmark"]["rmse_usd_per_bbl"], color="C3", ls="-.",
-                   label=f"final surrogate RMSE vs independent MC ({benchmark['points']} pts)")
+        ax.axhline(
+            benchmark["surrogate_vs_benchmark"]["rmse_noise_corrected_usd_per_bbl"],
+            color="C3", ls="-.",
+            label=f"final surrogate vs independent MC, noise-corrected ({benchmark['points']} pts)",
+        )
     ax.set_xlabel("training draws")
     ax.set_ylabel("USD/barrel")
     ax.set_title("Surrogate approximation error (not Heston model error)")

@@ -23,6 +23,7 @@ from .heston import MonteCarloConfig
 from .surrogate import (
     TrainConfig,
     contract_fingerprint,
+    flat_direction_check,
     independent_benchmark,
     jacobian_check,
     learning_curve,
@@ -139,6 +140,8 @@ def run_pipeline(contracts, out_dir, mc=MonteCarloConfig(), config=PipelineConfi
     log("Jacobian check ...")
     jacobian, arrays = jacobian_check(model, config.jacobian_points, config.jacobian_sobol_seed)
     np.savez_compressed(out_dir / "jacobian.npz", **arrays)
+    log("re-pricing along the flattest direction with Monte Carlo ...")
+    flat = flat_direction_check(model, contracts, mc, paths=config.benchmark_paths)
     plot_learning_curve(curve, benchmark, out_dir / "learning_curve.png")
     plot_jacobian(arrays, out_dir / "jacobian.png")
     report = {
@@ -153,6 +156,7 @@ def run_pipeline(contracts, out_dir, mc=MonteCarloConfig(), config=PipelineConfi
         "learning_curve": curve,
         "independent_benchmark": benchmark,
         "jacobian": jacobian,
+        "flat_direction_check": flat,
         "files": {"model": "model.pt", "data": "data/", "jacobian": "jacobian.npz",
                   "plots": ["learning_curve.png", "jacobian.png"]},
     }
@@ -163,7 +167,25 @@ def run_pipeline(contracts, out_dir, mc=MonteCarloConfig(), config=PipelineConfi
 
 def summary(report):
     t, b = report["test_set"], report["independent_benchmark"]
-    s, j = b["surrogate_vs_benchmark"], report["jacobian"]["smallest_singular_value"]
+    j = report["jacobian"]["smallest_singular_value"]
+    f = report["flat_direction_check"]["summary"]
+    paths = b["benchmark_monte_carlo"][0]["paths"]
+
+    def bench_row(name, block):
+        return (
+            f"  {name:<22} {block['rmse_noise_corrected_usd_per_bbl']:>10.4f} "
+            f"{block['rmse_raw_usd_per_bbl']:>8.4f} {block['median_abs_error_usd_per_bbl']:>8.4f} "
+            f"{block['max_abs_error_usd_per_bbl']:>8.4f}"
+        )
+
+    def decile_rows(block):
+        return [
+            f"    v0 [{d['v0_range'][0]:.3g}, {d['v0_range'][1]:.3g}]: "
+            f"RMSE {d['rmse_noise_corrected_usd_per_bbl']:.4f}, "
+            f"median {d['median_abs_error_usd_per_bbl']:.4f}"
+            for d in block["by_v0_decile"]
+        ]
+
     lines = [
         f"[{report['label']}] surrogate approximation error, USD/barrel (not model error)",
         f"  {'train draws':>11} {'test RMSE':>10} {'test max':>10}",
@@ -174,11 +196,18 @@ def summary(report):
         ),
         f"  label MC SE: mean {t['label_mc_se_mean_usd_per_bbl']:.4f}, "
         f"max {t['label_mc_se_max_usd_per_bbl']:.4f}",
-        f"  vs independent MC ({b['points']} pts, {b['benchmark_monte_carlo']['paths']} paths): "
-        f"RMSE {s['rmse_usd_per_bbl']:.4f}, max {s['max_abs_error_usd_per_bbl']:.4f}; "
-        f"training-stream labels vs same: RMSE "
-        f"{b['training_stream_labels_vs_benchmark']['rmse_usd_per_bbl']:.4f}",
+        f"  vs independent MC, 2 streams x {paths} paths, {b['points']} pts "
+        f"(stream-to-stream RMSE {b['stream_to_stream_rmse_usd_per_bbl']:.4f}):",
+        f"  {'':<22} {'RMSE corr':>10} {'raw':>8} {'median':>8} {'max':>8}",
+        bench_row("surrogate", b["surrogate_vs_benchmark"]),
+        bench_row("training-stream labels", b["training_stream_labels_vs_benchmark"]),
+        "  surrogate by v0 decile (noise-corrected RMSE; median incl. benchmark noise):",
+        *decile_rows(b["surrogate_vs_benchmark"]),
         f"  Jacobian smallest singular value: min {j['min']:.3g}, median {j['median']:.3g}",
+        f"  flattest direction, step {f['step']}: median MC move {f['median_mc_move_flattest']:.4f} "
+        f"(surrogate {f['median_surrogate_move_flattest']:.4f}) vs kappa-only "
+        f"{f['median_mc_move_kappa_only']:.4f}, theta-only {f['median_mc_move_theta_only']:.4f}; "
+        f"max stream disagreement {f['max_stream_disagreement_flattest']:.4f}",
     ]
     return "\n".join(lines)
 
