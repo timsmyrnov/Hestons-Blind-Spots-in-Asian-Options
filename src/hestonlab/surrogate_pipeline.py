@@ -10,7 +10,7 @@ All outputs go under outputs/ (git-ignored). Nothing derived from real data is
 written anywhere git would track.
 """
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 import argparse
 import json
@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 from .calibration import load_june_training
 from .heston import MonteCarloConfig
+from .manifold import geometry_diagnostics
 from .surrogate import (
     TrainConfig,
     contract_fingerprint,
@@ -29,11 +30,12 @@ from .surrogate import (
     learning_curve,
     plot_jacobian,
     plot_learning_curve,
+    price_error_scale,
     set_seeds,
 )
 from .surrogate_data import generate, save, synthetic_pilot_grid
 
-DEFAULT_OUT = Path("outputs/surrogate")
+DEFAULT_OUT = Path("outputs/manifold")
 
 
 @dataclass(frozen=True)
@@ -132,6 +134,12 @@ def run_pipeline(contracts, out_dir, mc=MonteCarloConfig(), config=PipelineConfi
     model = models[max(config.train_sizes)]
     model.metadata.update({"label": label, "sobol_seeds": {
         "train": config.train_sobol_seed, "test": config.test_sobol_seed}})
+    units = model.input_scaler.to_unit(test_data["parameters"][:config.jacobian_points])
+    units = np.vstack((units, np.zeros(5), np.ones(5), np.full(5, 0.5)))
+    geometry = geometry_diagnostics(model, units)
+    # Per-contract pricing error from held-out draws; the fit divides residuals by it.
+    error_scale = price_error_scale(model, test_data).tolist()
+    model.metadata["price_error_scale_usd_per_bbl"] = error_scale
     model.save(out_dir / "model.pt")
     log("independent Monte Carlo benchmark ...")
     benchmark = independent_benchmark(
@@ -147,12 +155,15 @@ def run_pipeline(contracts, out_dir, mc=MonteCarloConfig(), config=PipelineConfi
     report = {
         "label": label,
         "status": "experimental; surrogate approximation error only, NOT Heston model error",
+        "architecture": config.train.architecture,
+        "geometry": geometry,
         "contracts": len(contracts),
         "coordinate_ids": list(model.coordinate_ids),
         "contract_fingerprint": contract_fingerprint(contracts),
         "training_monte_carlo": asdict(mc),
         "pipeline": asdict(config),
         "test_set": curve[-1],
+        "price_error_scale_usd_per_bbl": error_scale,
         "learning_curve": curve,
         "independent_benchmark": benchmark,
         "jacobian": jacobian,
@@ -160,7 +171,8 @@ def run_pipeline(contracts, out_dir, mc=MonteCarloConfig(), config=PipelineConfi
         "files": {"model": "model.pt", "data": "data/", "jacobian": "jacobian.npz",
                   "plots": ["learning_curve.png", "jacobian.png"]},
     }
-    (out_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (out_dir / "report.json").write_text(json.dumps(report, indent=2, allow_nan=False),
+                                       encoding="utf-8")
     log(summary(report))
     return report
 
@@ -188,6 +200,7 @@ def summary(report):
 
     lines = [
         f"[{report['label']}] surrogate approximation error, USD/barrel (not model error)",
+        f"  geometry: {report['geometry']['guarantee']}",
         f"  {'train draws':>11} {'test RMSE':>10} {'test max':>10}",
         *(
             f"  {r['training_draws']:>11} {r['rmse_usd_per_bbl']:>10.4f} "
@@ -238,17 +251,29 @@ def main(argv=None):
     june = sub.add_parser("june", help="one network per June observation date")
     june.add_argument("--root", type=Path, required=True, help="private June data root")
     june.add_argument("--dates", nargs="*", help="subset of observation dates (YYYY-MM-DD)")
+    june.add_argument("--fit", action="store_true", help="fit June labels after manifold training")
+    june.add_argument("--starts", type=int, default=8, help="local fitting starts")
+    june.add_argument("--pooled", action="store_true",
+                      help="fit one shared parameter vector for all dates (default: per date)")
+    june.add_argument("--weighting", choices=("noise", "usd"), default="noise",
+                      help="noise: residual / per-contract error scale; usd: equal USD weights")
     for p in (syn, june):
         p.add_argument("--out", type=Path, default=None)
         p.add_argument("--quick", action="store_true", help="tiny sizes, smoke test only")
+        p.add_argument("--architecture", choices=("manifold", "mlp"), default="manifold",
+                       help="manifold is guaranteed by construction; mlp is the legacy baseline")
     args = parser.parse_args(argv)
     config = QUICK if args.quick else PipelineConfig()
+    config = replace(config, train=replace(config.train, architecture=args.architecture))
+    default_out = DEFAULT_OUT if args.architecture == "manifold" else Path("outputs/surrogate")
     try:
+        if getattr(args, "fit", False) and args.architecture != "manifold":
+            raise ValueError("--fit requires --architecture manifold")
         if args.source == "synthetic":
-            out = check_output_location(args.out or DEFAULT_OUT / "synthetic")
+            out = check_output_location(args.out or default_out / "synthetic")
             sets = {"synthetic": (synthetic_contract_sets()["synthetic"], MonteCarloConfig())}
         else:
-            out = check_output_location(args.out or DEFAULT_OUT / "june")
+            out = check_output_location(args.out or default_out / "june")
             if args.root.resolve() in (out, *out.parents):
                 raise ValueError("Write outputs outside the preserved data archive")
             found = june_contract_sets(args.root)
@@ -263,6 +288,15 @@ def main(argv=None):
     for name, (contracts, mc) in sets.items():
         target = out if args.source == "synthetic" else out / name
         reports[name] = run_pipeline(contracts, target, mc, config, label=name)
+    if getattr(args, "fit", False):
+        from .manifold_calibration import fit_saved_models
+
+        snapshots = [s for s in load_june_training(args.root) if s.observation_date in sets]
+        fitted = fit_saved_models(snapshots, out, pooled=args.pooled, starts=args.starts,
+                                  weighting=args.weighting,
+                                  verification_paths=config.benchmark_paths)
+        (out / "fit.json").write_text(json.dumps(fitted, indent=2, allow_nan=False))
+        reports["fit"] = fitted
     return reports
 
 

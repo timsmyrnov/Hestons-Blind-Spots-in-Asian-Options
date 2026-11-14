@@ -21,9 +21,10 @@ from torch import nn
 from .calibration import LOWER, PARAMETER_NAMES, UPPER
 from .heston import HestonParameters, MonteCarloConfig, price_asian_options
 from .surrogate_data import LOG_SCALED, sample_parameters
+from .manifold import ManifoldNetwork
 
 DTYPE = torch.float64
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 # Same convention as calibrate_june's independent-stream check.
 INDEPENDENT_SEED_OFFSET = 1_000_000
 _BOUND_TOLERANCE = 1e-9  # Absorbs exp(log(x)) round-off at the box edges only.
@@ -61,6 +62,8 @@ class InputScaler:
 
     def to_unit(self, params):
         values = as_parameter_array(params)
+        if not np.isfinite(values).all():
+            raise ValueError("Parameters must be finite")
         span = self.upper - self.lower
         if (values < self.lower - _BOUND_TOLERANCE * span).any() or (
             values > self.upper + _BOUND_TOLERANCE * span
@@ -85,6 +88,10 @@ class OutputScaler:
     def __init__(self, mean, std):
         self.mean = np.asarray(mean, dtype=float)
         self.std = np.asarray(std, dtype=float)
+        if (self.mean.ndim != 1 or self.std.shape != self.mean.shape
+                or not np.isfinite(self.mean).all() or not np.isfinite(self.std).all()
+                or (self.std <= 0).any()):
+            raise ValueError("Finite output means and strictly positive scales required")
 
     @classmethod
     def fit(cls, prices):
@@ -105,6 +112,7 @@ class SurrogateMLP(nn.Module):
 
     def __init__(self, n_outputs, width=64, depth=4):
         super().__init__()
+        self.architecture, self.width, self.depth = "mlp", width, depth
         layers, size = [], 5
         for _ in range(depth):
             layers += [nn.Linear(size, width, dtype=DTYPE), nn.Softplus()]
@@ -156,8 +164,9 @@ class Surrogate:
             {
                 "format_version": FORMAT_VERSION,
                 "state_dict": self.network.state_dict(),
-                "width": self.network.net[0].out_features,
-                "depth": (len(self.network.net) - 1) // 2,
+                "architecture": self.network.architecture,
+                "width": self.network.width,
+                "depth": self.network.depth,
                 "output_mean": self.output_scaler.mean.tolist(),
                 "output_std": self.output_scaler.std.tolist(),
                 "input_lower": self.input_scaler.lower.tolist(),
@@ -171,14 +180,21 @@ class Surrogate:
     @classmethod
     def load(cls, path):
         blob = torch.load(Path(path), weights_only=True)
-        if blob["format_version"] != FORMAT_VERSION:
+        if blob["format_version"] not in (1, FORMAT_VERSION):
             raise ValueError(f"Unsupported surrogate file version {blob['format_version']}")
         if not (
             np.allclose(blob["input_lower"], LOWER) and np.allclose(blob["input_upper"], UPPER)
         ):
             raise ValueError("Saved surrogate used different calibration bounds")
-        network = SurrogateMLP(len(blob["coordinate_ids"]), blob["width"], blob["depth"])
+        architecture = "mlp" if blob["format_version"] == 1 else blob["architecture"]
+        network = make_network(architecture, len(blob["coordinate_ids"]),
+                               blob["width"], blob["depth"])
         network.load_state_dict(blob["state_dict"])
+        if not all(torch.isfinite(v).all() for v in network.state_dict().values()):
+            raise ValueError("Nonfinite network state")
+        if isinstance(network, ManifoldNetwork):
+            if not torch.linalg.svdvals(network.affine)[-1].item() > 0:
+                raise ValueError("Singular ambient affine map")
         scaler = OutputScaler(blob["output_mean"], blob["output_std"])
         return cls(network, scaler, blob["coordinate_ids"], json.loads(blob["metadata"]))
 
@@ -194,6 +210,14 @@ class TrainConfig:
     max_epochs: int = 3000
     validation_fraction: float = 0.1  # carved from TRAINING data, for early stopping only
     seed: int = 0
+    architecture: str = "manifold"
+
+
+def make_network(architecture, n_outputs, width, depth):
+    if architecture not in ("manifold", "mlp"):
+        raise ValueError("Architecture must be manifold or mlp")
+    cls = ManifoldNetwork if architecture == "manifold" else SurrogateMLP
+    return cls(n_outputs, width, depth)
 
 
 def set_seeds(seed):
@@ -211,15 +235,25 @@ def train(data, contracts, config=TrainConfig(), metadata=None, verbose=False):
     set_seeds(config.seed)
     x = InputScaler().to_unit(data["parameters"])
     prices = np.asarray(data["prices"], dtype=float)
+    if (prices.shape != (len(x), len(contracts)) or len(x) < 3
+            or not np.isfinite(prices).all()):
+        raise ValueError("At least three finite, aligned parameter/price rows required")
+    if (config.max_epochs < 1 or config.batch_size < 1
+            or not 0 < config.validation_fraction < 1):
+        raise ValueError("Positive epochs/batch size and validation fraction in (0, 1) required")
     order = np.random.default_rng(config.seed).permutation(len(x))
     n_val = max(1, int(round(config.validation_fraction * len(x))))
     val, fit = order[:n_val], order[n_val:]
+    if len(fit) < 2:
+        raise ValueError("At least two fitting rows required after validation split")
     output_scaler = OutputScaler.fit(prices[fit])
     x_fit, x_val = (torch.as_tensor(x[i], dtype=DTYPE) for i in (fit, val))
     y_fit, y_val = (
         torch.as_tensor(output_scaler.transform(prices[i]), dtype=DTYPE) for i in (fit, val)
     )
-    network = SurrogateMLP(len(contracts), config.width, config.depth)
+    network = make_network(config.architecture, len(contracts), config.width, config.depth)
+    if isinstance(network, ManifoldNetwork):
+        network.initialize_from_data(x[fit], output_scaler.transform(prices[fit]))
     optimizer = torch.optim.Adam(network.parameters(), lr=config.learning_rate)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, factor=0.5, patience=config.lr_patience, min_lr=config.min_learning_rate
@@ -231,11 +265,15 @@ def train(data, contracts, config=TrainConfig(), metadata=None, verbose=False):
         for batch in torch.randperm(len(x_fit), generator=generator).split(config.batch_size):
             optimizer.zero_grad()
             loss = torch.mean((network(x_fit[batch]) - y_fit[batch]) ** 2)
+            if not torch.isfinite(loss):
+                raise ValueError("Nonfinite training loss")
             loss.backward()
             optimizer.step()
         network.eval()
         with torch.no_grad():
             val_loss = float(torch.mean((network(x_val) - y_val) ** 2))
+        if not np.isfinite(val_loss):
+            raise ValueError("Nonfinite validation loss")
         scheduler.step(val_loss)
         lr = optimizer.param_groups[0]["lr"]
         history.append({"epoch": epoch, "validation_mse_standardized": val_loss, "lr": lr})
@@ -298,6 +336,24 @@ def evaluate(model, data):
         "label_mc_se_mean_usd_per_bbl": float(se.mean()),
         "label_mc_se_max_usd_per_bbl": float(se.max()),
     }
+
+
+PRICE_TICK = 0.01  # AO minimum price fluctuation, USD/barrel; floor for error scales.
+
+
+def price_error_scale(model, data, floor=PRICE_TICK):
+    """How precisely each contract can be priced, in USD/barrel, from held-out draws.
+
+    sqrt(surrogate MSE vs labels + mean label MC variance), averaged over the whole
+    parameter box and floored at one price tick (pass `floor` for other price units).
+    A fit residual divided by this is in noise units: about 1 means "within our own
+    pricing error" for that contract.
+    """
+    if tuple(str(i) for i in data["coordinate_ids"]) != model.coordinate_ids:
+        raise ValueError("Data was generated for a different contract set")
+    diff = model(data["parameters"]) - np.asarray(data["prices"], dtype=float)
+    se = np.asarray(data["standard_errors"], dtype=float)
+    return np.maximum(np.sqrt(np.mean(diff**2, axis=0) + np.mean(se**2, axis=0)), floor)
 
 
 def compare_to_benchmark(predicted, stream_a, stream_b, v0):
