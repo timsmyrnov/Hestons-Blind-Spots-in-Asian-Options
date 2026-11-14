@@ -220,6 +220,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 # HestonLab local market data and credentials
+HestonLab_Asian_Data/
 outputs/
 work/
 sources/

@@ -2,8 +2,10 @@
 
 This first implementation fits the five Heston parameters to observed AO
 settlements using Monte Carlo Asian prices. June 2024 is the calibration month;
-July is held out and its option files are never opened by this workflow. The
-neural-network manifold/surrogate step is deferred. No market parameter estimates
+July is held out and its option files are never opened by this workflow. This
+page describes the direct Monte Carlo baseline; the implemented
+[manifold-constrained neural workflow](manifold.md) adds neural fitting with
+independent Monte Carlo verification. No market parameter estimates
 can be produced from the code-only checkout: the 50-row public sample does not
 include June curves, discount factors or fixing schedules.
 
@@ -60,7 +62,7 @@ limit, arithmetic call/put parity, common-factor consistency, fully accrued
 payoffs, input failures, synthetic calibration improvement and month separation.
 Synthetic fixtures are tests only; they are never presented as market results.
 
-Later work can freeze June settings before July scoring and use this pricer to
-generate labeled parameter/price pairs for a conditional neural surrogate. Its
-conditioning inputs must include curves, time, discounting and averaging state;
-simulation error needs a separate benchmark before manifold distances are used.
+The manifold workflow uses this pricer to generate parameter/price pairs, with
+curves, time, discounting and averaging state fixed per date and contract set.
+It benchmarks approximation error separately. June settings must still be frozen
+before any July scoring.
