@@ -131,11 +131,11 @@ def write_html(rows, grid, path, seconds=10.0, sigma=2.0):
         "gaps": np.round(shown, 5).tolist(), "noise": np.round(smooth(noise, sigma), 5).tolist(),
         "rms": np.round(rms, 5).tolist(),
         "rmsSmooth": np.round(np.sqrt(smooth(gaps ** 2, sigma).mean(axis=1)), 5).tolist(),
-        "tenors": [f"{12 * t:.1f} mo" for t in grid.tenors],
+        "tenors": [f"{12 * t:.1f} months" for t in grid.tenors],
         "strikes": [f"{100 * np.exp(x):.0f}%" for x in grid.log_moneyness],
         "limit": nice_scale(shown), "ramp": DIVERGING, "seconds": seconds,
-        "note": f"{2 * sigma / 5:.0f}-week smoothing" if sigma >= 2.5 else
-                f"{max(1, round(2.35 * sigma)):.0f}-day smoothing",
+        "note": f"{2 * sigma / 5:.0f}-week average" if sigma >= 2.5 else
+                f"{max(1, round(2.35 * sigma)):.0f}-day average",
     }
     html = (HTML.replace("__DATA__", json.dumps(data, separators=(",", ":")))
             .replace("__CMR__", _font("cmr10.ttf")).replace("__CMB__", _font("cmb10.ttf")))
@@ -178,92 +178,84 @@ const sign = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3);
 const lerp = (a, b, w) => a + (b - a) * w;
 
 // layout (virtual 1920 x 1080)
-const X0 = 330, Y0 = 250, CW = 168, CH = 132, GAP = 4, COLS = 7, ROWS = 3;
+const X0 = 420, Y0 = 300, CW = 168, CH = 124, GAP = 6, COLS = 7, ROWS = 3;
 const HW = COLS * CW + (COLS - 1) * GAP, HH = ROWS * CH + (ROWS - 1) * GAP;
-const T0 = 812, TH = 150;  // timeline top and height
-const rmsMax = Math.max(...D.rms) * 1.08;
+const T0 = 790, TH = 120;  // average-gap line: top and height
+const rmsMax = Math.max(...D.rmsSmooth) * 1.1;
 
-function niceStep(span, count) {
-  const raw = span / count, mag = 10 ** Math.floor(Math.log10(raw));
-  return [1, 2, 2.5, 5, 10].map(s => s * mag).find(s => s >= raw);
+const cents = v => { const c = Math.round(v * 100); return c === 0 ? "0" : (c > 0 ? "+" : "−") + Math.abs(c); };
+function arrow(x1, x2, y, head) {  // thin line with an arrowhead at x2
+  c.strokeStyle = FAINT; c.fillStyle = FAINT; c.lineWidth = 1.2;
+  c.beginPath(); c.moveTo(x1, y); c.lineTo(x2, y); c.stroke();
+  const d = Math.sign(x2 - x1);
+  c.beginPath(); c.moveTo(x2, y); c.lineTo(x2 - d * head, y - head / 2); c.lineTo(x2 - d * head, y + head / 2); c.fill();
 }
 function frame(progress) {
-  const x = progress * (n - 1), k = Math.min(Math.floor(x), n - 2 < 0 ? 0 : n - 2), w = n > 1 ? x - k : 0;
+  const x = progress * (n - 1), k = Math.min(Math.floor(x), Math.max(n - 2, 0)), w = n > 1 ? x - k : 0;
   const k2 = Math.min(k + 1, n - 1), day = Math.round(x);
   c.setTransform(canvas.width / VW, 0, 0, canvas.height / VH, 0, 0);
   c.fillStyle = "#fcfcfb"; c.fillRect(0, 0, VW, VH);
   c.textBaseline = "alphabetic"; c.textAlign = "left";
-  c.fillStyle = INK; c.font = F(700, 30); c.fillText(D.dates[day], 72, 86);
-  c.fillStyle = MUTED; c.font = F(400, 19);
-  c.fillText(`Market minus Heston, per option (USD/bbl) · ${D.note}`, 72, 118);
+  c.fillStyle = INK; c.font = F(700, 32); c.fillText(D.dates[day], 96, 104);
+  c.fillStyle = MUTED; c.font = F(400, 22);
+  c.fillText("Market price minus Heston price, per option   (cents per barrel)", 96, 144);
 
-  // column and row headers
-  c.textAlign = "center"; c.fillStyle = MUTED; c.font = F(400, 18);
-  for (let j = 0; j < COLS; j++) c.fillText(D.strikes[j], X0 + j * (CW + GAP) + CW / 2, Y0 - 16);
-  c.font = F(400, 17); c.fillStyle = FAINT;
-  c.fillText("strike ÷ average forward  (puts below 100%, calls at and above)", X0 + HW / 2, Y0 - 52);
-  c.textAlign = "right"; c.font = F(400, 18); c.fillStyle = MUTED;
-  for (let i = 0; i < ROWS; i++) c.fillText(D.tenors[i], X0 - 18, Y0 + i * (CH + GAP) + CH / 2 + 6);
-  c.save(); c.translate(X0 - 112, Y0 + HH / 2); c.rotate(-Math.PI / 2);
-  c.textAlign = "center"; c.font = F(400, 17); c.fillStyle = FAINT; c.fillText("time to last fixing", 0, 0); c.restore();
+  // puts <-- at the money --> calls, then the strikes
+  const mid = X0 + 3 * (CW + GAP) + CW / 2, yA = Y0 - 78;
+  c.font = F(400, 19); c.fillStyle = MUTED;
+  c.textAlign = "left"; c.fillText("puts", X0, yA + 6);
+  c.textAlign = "right"; c.fillText("calls", X0 + HW, yA + 6);
+  c.textAlign = "center"; c.fillText("at the money", mid, yA + 6);
+  const half = c.measureText("at the money").width / 2 + 18;
+  arrow(mid - half, X0 + 58, yA, 9);
+  arrow(mid + half, X0 + HW - 62, yA, 9);
+  c.font = F(400, 19); c.fillStyle = MUTED;
+  for (let j = 0; j < COLS; j++) c.fillText(D.strikes[j], X0 + j * (CW + GAP) + CW / 2, Y0 - 20);
+  c.textAlign = "left"; c.font = F(400, 16); c.fillStyle = FAINT;
+  c.fillText("strike, % of forward", X0 + HW + 22, Y0 - 20);
+  c.textAlign = "right"; c.font = F(400, 20); c.fillStyle = MUTED;
+  for (let i = 0; i < ROWS; i++) c.fillText(D.tenors[i], X0 - 22, Y0 + i * (CH + GAP) + CH / 2 + 7);
 
-  // cells
-  let quiet = false;
+  // cells: colour and whole cents
   for (let i = 0; i < ROWS; i++) for (let j = 0; j < COLS; j++) {
-    const idx = i * COLS + j;
-    const v = lerp(D.gaps[k][idx], D.gaps[k2][idx], w), s = lerp(D.noise[k][idx], D.noise[k2][idx], w);
+    const idx = i * COLS + j, v = lerp(D.gaps[k][idx], D.gaps[k2][idx], w);
     const col = shade(v / D.limit), cx = X0 + j * (CW + GAP), cy = Y0 + i * (CH + GAP);
     c.fillStyle = rgb(col);
-    c.beginPath(); c.roundRect(cx, cy, CW, CH, 4); c.fill();
-    const inNoise = Math.abs(v) < 2 * s;
-    quiet = quiet || inNoise;
-    c.textAlign = "center"; c.font = F(400, 30);
-    c.fillStyle = inNoise ? FAINT : (lum(col) < 0.22 ? "#ffffff" : INK);
-    c.fillText(sign(v), cx + CW / 2, cy + CH / 2 + 10);
+    c.beginPath(); c.roundRect(cx, cy, CW, CH, 6); c.fill();
+    c.textAlign = "center"; c.font = F(400, 36);
+    c.fillStyle = lum(col) < 0.22 ? "#ffffff" : INK;
+    c.fillText(cents(v), cx + CW / 2, cy + CH / 2 + 12);
   }
-  c.textAlign = "left"; c.font = F(400, 16); c.fillStyle = FAINT;
-  c.fillText("grey number: within 2σ of Monte Carlo noise", X0, Y0 + HH + 30);
 
-  // colour bar
-  const BX = X0 + HW + 64, BW = 24;
-  for (let y = 0; y < HH; y++) { c.fillStyle = rgb(shade(1 - 2 * y / (HH - 1))); c.fillRect(BX, Y0 + y, BW, 1.5); }
-  c.textAlign = "left"; c.font = F(400, 17); c.fillStyle = MUTED;
-  for (const f of [1, 0.5, 0, -0.5, -1]) {
-    const y = Y0 + (1 - f) / 2 * (HH - 1);
-    c.fillStyle = RULE; c.fillRect(BX + BW, y - 0.5, 8, 1);
-    c.fillStyle = MUTED; c.fillText(f === 0 ? "0" : sign(f * D.limit), BX + BW + 14, y + 6);
+  // one-line key
+  const yK = Y0 + HH + 52;
+  c.font = F(400, 19); c.textAlign = "left";
+  let kx = X0;
+  for (const [f, text] of [[0.85, "red = market above Heston"], [-0.85, "blue = market below Heston"]]) {
+    c.fillStyle = rgb(shade(f)); c.beginPath(); c.roundRect(kx, yK - 14, 16, 16, 3); c.fill();
+    c.fillStyle = MUTED; c.fillText(text, kx + 26, yK);
+    kx += 26 + c.measureText(text).width + 48;
   }
-  c.font = F(400, 16); c.fillStyle = FAINT;
-  c.fillText("market above Heston", BX - 4, Y0 - 16);
-  c.fillText("market below Heston", BX - 4, Y0 + HH + 30);
 
-  // timeline: daily RMS over the 21 options
-  const TX = X0, TW = HW, ty = v => T0 + TH - v / rmsMax * TH, tx = i => TX + (n > 1 ? i / (n - 1) : 0) * TW;
-  c.fillStyle = MUTED; c.font = F(400, 18); c.textAlign = "left";
-  c.fillText("RMS over the 21 options (USD/bbl)", TX, T0 - 22);
-  const step = niceStep(rmsMax, 3);
-  c.font = F(400, 15); c.textAlign = "right";
-  for (let v = 0; v <= rmsMax + 1e-9; v += step) {
-    c.fillStyle = RULE; c.fillRect(TX, ty(v) - 0.5, TW, 1);
-    c.fillStyle = FAINT; c.fillText(v.toFixed(2), TX - 10, ty(v) + 5);
-  }
-  c.textAlign = "center";
-  let last = "";
-  for (let i = 0; i < n; i++) if (D.months[i] !== last) {
-    last = D.months[i];
-    c.fillStyle = RULE; c.fillRect(tx(i) - 0.5, T0 + TH, 1, 6);
-    c.fillStyle = FAINT; c.fillText(last, tx(i) + 18, T0 + TH + 24);
-  }
+  // average gap over the year: one line, the past dark, a dot now
+  const TX = X0 + 150, TW = HW - 150, tx = i => TX + (n > 1 ? i / (n - 1) : 0) * TW;
+  const ty = v => T0 + TH - v / rmsMax * TH;
+  c.fillStyle = MUTED; c.font = F(400, 19); c.textAlign = "left";
+  c.fillText("average gap", X0, T0 + TH / 2 + 6);
   c.lineJoin = "round"; c.lineCap = "round";
-  c.strokeStyle = "#c4c7ce"; c.lineWidth = 1.5; c.beginPath();
-  D.rms.forEach((v, i) => i ? c.lineTo(tx(i), ty(v)) : c.moveTo(tx(i), ty(v))); c.stroke();
+  c.strokeStyle = "#d4d6dc"; c.lineWidth = 2; c.beginPath();
+  D.rmsSmooth.forEach((v, i) => i ? c.lineTo(tx(i), ty(v)) : c.moveTo(tx(i), ty(v))); c.stroke();
+  const now = lerp(D.rmsSmooth[k], D.rmsSmooth[k2], w);
   c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath();
   for (let i = 0; i <= k; i++) i ? c.lineTo(tx(i), ty(D.rmsSmooth[i])) : c.moveTo(tx(i), ty(D.rmsSmooth[i]));
-  const now = lerp(D.rmsSmooth[k], D.rmsSmooth[k2], w);
   c.lineTo(tx(x), ty(now)); c.stroke();
-  c.fillStyle = INK; c.beginPath(); c.arc(tx(x), ty(now), 5, 0, 2 * Math.PI); c.fill();
-  c.textAlign = "left"; c.font = F(700, 17);
-  c.fillText(now.toFixed(3), tx(x) + 10, ty(now) - 10);
+  c.fillStyle = INK; c.beginPath(); c.arc(tx(x), ty(now), 5.5, 0, 2 * Math.PI); c.fill();
+  c.font = F(700, 19); c.fillText(`${(now * 100).toFixed(1)} cents`, tx(x) + 12, ty(now) - 10);
+  c.font = F(400, 16); c.fillStyle = FAINT; c.textAlign = "center";
+  const first = { Jan: -1, Jun: -1, Dec: -1 };
+  D.months.forEach((m, i) => { if (m in first && first[m] < 0) first[m] = i; });
+  for (const [m, i] of Object.entries(first)) if (i >= 0) c.fillText(m, tx(i), T0 + TH + 30);
+  c.textAlign = "right"; c.fillText(D.note, VW - 96, VH - 56);
 }
 
 function size(w, h) { canvas.width = w; canvas.height = h; }

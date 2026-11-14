@@ -38,7 +38,7 @@ def test_page_carries_smoothed_gaps_noise_and_labels(tmp_path):
     path = hm.write_html(rows, grid, tmp_path / "h.html", seconds=10.0, sigma=0.0)
     data = json.loads(path.read_text().split("const D = ")[1].split(";\n")[0])
     assert data["dates"] == ["Jan 2, 2025", "Jan 3, 2025", "Jan 6, 2025"]
-    assert data["tenors"] == ["2.4 mo", "3.6 mo", "4.8 mo"]
+    assert data["tenors"] == ["2.4 months", "3.6 months", "4.8 months"]
     assert data["strikes"] == ["82%", "88%", "94%", "100%", "107%", "114%", "122%"]
     np.testing.assert_allclose(data["gaps"][2], 0.06)
     assert data["seconds"] == 10.0 and data["limit"] >= 0.06
