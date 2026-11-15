@@ -3,9 +3,9 @@
 This first implementation fits the five Heston parameters to observed AO
 settlements using Monte Carlo Asian prices. June 2024 is the calibration month;
 July is held out and its option files are never opened by this workflow. This
-page describes the direct Monte Carlo baseline; the implemented
-[manifold-constrained neural workflow](manifold.md) adds neural fitting with
-independent Monte Carlo verification. No market parameter estimates
+page describes the independent Python Monte Carlo baseline. The current
+[weekly C++ workflow](weekly_cpp_design.md) uses direct simulation and a
+non-neural market surface with independent numerical checks. No market parameter estimates
 can be produced from the code-only checkout: the 50-row public sample does not
 include June curves, discount factors or fixing schedules.
 
@@ -62,7 +62,6 @@ limit, arithmetic call/put parity, common-factor consistency, fully accrued
 payoffs, input failures, synthetic calibration improvement and month separation.
 Synthetic fixtures are tests only; they are never presented as market results.
 
-The manifold workflow uses this pricer to generate parameter/price pairs, with
-curves, time, discounting and averaging state fixed per date and contract set.
-It benchmarks approximation error separately. June settings must still be frozen
-before any July scoring.
+The weekly C++ workflow has its own native engine, independently checked against
+this Python implementation. It prices the normalized fixed grid directly; it
+does not generate neural training pairs. See [the runbook](weekly_cpp_runbook.md).
