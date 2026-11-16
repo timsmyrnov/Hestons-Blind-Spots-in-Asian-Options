@@ -1,0 +1,199 @@
+{
+  "what": "the same experiment with different training-epoch caps; data, truth, market and Monte Carlo traders are identical, only the network differs",
+  "primary_run": "epochs_6000",
+  "primary_rule": "the run with the experiment's configured epoch cap, fixed before it was trained (not the best-looking run)",
+  "runs": [
+    {
+      "run": "epochs_3000",
+      "max_epochs": 3000,
+      "epochs_trained": 3000,
+      "hit_epoch_cap": true,
+      "best_validation_mse_standardized": 9.52308750519422e-05,
+      "training_core_seconds": 438.450301,
+      "accuracy_usd_per_bbl": {
+        "network": {
+          "rmse_noise_corrected": 0.03941495094282137,
+          "median": 0.017539383081724758,
+          "max": 0.20958978147270102
+        },
+        "mc_16k": {
+          "rmse_noise_corrected": 0.038506793481078216,
+          "median": 0.015489762483278824,
+          "max": 0.20495935743201166
+        },
+        "mc_4k": {
+          "rmse_noise_corrected": 0.04977947838432977,
+          "median": 0.020403323907889792,
+          "max": 0.2773341036057513
+        }
+      },
+      "pct_of_oracle": {
+        "oracle": {
+          "point": 100.0,
+          "ci95": [
+            100.0,
+            100.0
+          ]
+        },
+        "network": {
+          "point": 88.24973721055099,
+          "ci95": [
+            87.0463207236285,
+            89.39574123075859
+          ]
+        },
+        "mc_16k": {
+          "point": 88.83768675436139,
+          "ci95": [
+            87.63168214959839,
+            90.0065681448837
+          ]
+        },
+        "mc_4k": {
+          "point": 83.23580896623314,
+          "ci95": [
+            81.69609640916659,
+            84.69546688357575
+          ]
+        }
+      },
+      "total_pnl_usd": {
+        "oracle": 610904.1161158446,
+        "network": 539121.2770806721,
+        "mc_16k": 542713.0850444941,
+        "mc_4k": 508490.98305703944
+      },
+      "wrong_way_trades": {
+        "network": 626,
+        "mc_16k": 631,
+        "mc_4k": 990
+      },
+      "network_minus_mc_16k": {
+        "point_usd": -3591.807963822037,
+        "ci95_usd": [
+          -6015.096284872028,
+          -1108.0386345596228
+        ],
+        "point_pct_of_oracle": -0.5879495438103959,
+        "ci95_pct_of_oracle": [
+          -0.9843750742539839,
+          -0.18237144404647326
+        ],
+        "share_of_resamples_a_at_least_b": 0.0018
+      },
+      "network_minus_mc_4k": {
+        "point_usd": 30630.294023632654,
+        "ci95_usd": [
+          23411.186584183128,
+          38171.43253268262
+        ],
+        "point_pct_of_oracle": 5.013928244317853,
+        "ci95_pct_of_oracle": [
+          3.8314622257014372,
+          6.2465778813790624
+        ],
+        "share_of_resamples_a_at_least_b": 1.0
+      },
+      "break_even_calls": {
+        "mc_16k": 33128.90462412568,
+        "mc_4k": 118872.99517328975
+      }
+    },
+    {
+      "run": "epochs_6000",
+      "max_epochs": 6000,
+      "epochs_trained": 6000,
+      "hit_epoch_cap": true,
+      "best_validation_mse_standardized": 8.177078638275655e-05,
+      "training_core_seconds": 880.937444,
+      "accuracy_usd_per_bbl": {
+        "network": {
+          "rmse_noise_corrected": 0.03926175080529827,
+          "median": 0.017018298717628416,
+          "max": 0.2089328165217612
+        },
+        "mc_16k": {
+          "rmse_noise_corrected": 0.038506793481078216,
+          "median": 0.015489762483278824,
+          "max": 0.20495935743201166
+        },
+        "mc_4k": {
+          "rmse_noise_corrected": 0.04977947838432977,
+          "median": 0.020403323907889792,
+          "max": 0.2773341036057513
+        }
+      },
+      "pct_of_oracle": {
+        "oracle": {
+          "point": 100.0,
+          "ci95": [
+            100.0,
+            100.0
+          ]
+        },
+        "network": {
+          "point": 88.48904958449269,
+          "ci95": [
+            87.28208257770108,
+            89.63184359359182
+          ]
+        },
+        "mc_16k": {
+          "point": 88.83768675436139,
+          "ci95": [
+            87.63168214959839,
+            90.0065681448837
+          ]
+        },
+        "mc_4k": {
+          "point": 83.23580896623314,
+          "ci95": [
+            81.69609640916659,
+            84.69546688357575
+          ]
+        }
+      },
+      "total_pnl_usd": {
+        "oracle": 610904.1161158446,
+        "network": 540583.2462234565,
+        "mc_16k": 542713.0850444941,
+        "mc_4k": 508490.98305703944
+      },
+      "wrong_way_trades": {
+        "network": 627,
+        "mc_16k": 631,
+        "mc_4k": 990
+      },
+      "network_minus_mc_16k": {
+        "point_usd": -2129.8388210376725,
+        "ci95_usd": [
+          -4435.240001282646,
+          174.79522852590878
+        ],
+        "point_pct_of_oracle": -0.3486371698686952,
+        "ci95_pct_of_oracle": [
+          -0.7231617855986637,
+          0.028696170292628113
+        ],
+        "share_of_resamples_a_at_least_b": 0.036
+      },
+      "network_minus_mc_4k": {
+        "point_usd": 32092.26316641702,
+        "ci95_usd": [
+          24931.072761840056,
+          39593.864042824396
+        ],
+        "point_pct_of_oracle": 5.253240618259554,
+        "ci95_pct_of_oracle": [
+          4.0779469196638205,
+          6.476472175908612
+        ],
+        "share_of_resamples_a_at_least_b": 1.0
+      },
+      "break_even_calls": {
+        "mc_16k": 46598.89559547342,
+        "mc_4k": 169551.0636770447
+      }
+    }
+  ]
+}

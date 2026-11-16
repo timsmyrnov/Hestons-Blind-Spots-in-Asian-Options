@@ -1,0 +1,89 @@
+{
+  "status": "SYNTHETIC experiment; surrogate approximation error only, not Heston model error; no real data used",
+  "contracts": 27,
+  "architecture": "manifold",
+  "parameter_box": {
+    "name": "value_experiment",
+    "v0": [
+      0.01,
+      0.36
+    ],
+    "kappa": [
+      0.1,
+      5.0
+    ],
+    "theta": [
+      0.01,
+      0.36
+    ],
+    "sigma": [
+      0.05,
+      1.5
+    ],
+    "rho": [
+      -0.95,
+      0.5
+    ]
+  },
+  "config": {
+    "train_draws": 16384,
+    "test_draws": 2048,
+    "eval_points": 512,
+    "label_paths": 16384,
+    "cheap_paths": 4096,
+    "truth_paths": 262144,
+    "truth_seeds": [
+      5002024,
+      6002024
+    ],
+    "train_sobol_seed": 0,
+    "test_sobol_seed": 1,
+    "market_noise": 0.07,
+    "threshold": 0.03,
+    "cost_per_trade": 0.01,
+    "multiplier": 1000.0,
+    "market_seed": 20240614,
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 7,
+    "timing_batch": 1000,
+    "timing_repeats": 20,
+    "workers": null
+  },
+  "train_config": {
+    "width": 64,
+    "depth": 4,
+    "batch_size": 256,
+    "learning_rate": 0.003,
+    "min_learning_rate": 1e-05,
+    "lr_patience": 40,
+    "max_epochs": 6000,
+    "validation_fraction": 0.1,
+    "seed": 0,
+    "architecture": "manifold"
+  },
+  "training_epochs": 6000,
+  "best_validation_mse_standardized": 8.177078638275655e-05,
+  "final_learning_rate": 1e-05,
+  "label_monte_carlo": {
+    "paths": 16384,
+    "max_step_years": 0.0027397260273972603,
+    "seed": 2024
+  },
+  "truth_monte_carlo": [
+    {
+      "paths": 262144,
+      "max_step_years": 0.0027397260273972603,
+      "seed": 5002024
+    },
+    {
+      "paths": 262144,
+      "max_step_years": 0.0027397260273972603,
+      "seed": 6002024
+    }
+  ],
+  "cheap_monte_carlo": {
+    "paths": 4096,
+    "max_step_years": 0.0027397260273972603,
+    "seed": 2024
+  }
+}

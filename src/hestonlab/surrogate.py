@@ -128,9 +128,10 @@ class Surrogate:
     """A trained network plus everything needed to use it: both scalers, the contract
     IDs (column order of the output) and a fingerprint of the contract set."""
 
-    def __init__(self, network, output_scaler, coordinate_ids, metadata=None):
+    def __init__(self, network, output_scaler, coordinate_ids, metadata=None, input_scaler=None):
         self.network = network.eval()
-        self.input_scaler = InputScaler()
+        # Default: the calibration box. A custom box comes from surrogate_box.ParameterBox.
+        self.input_scaler = InputScaler() if input_scaler is None else input_scaler
         self.output_scaler = output_scaler
         self.coordinate_ids = tuple(coordinate_ids)
         self.metadata = dict(metadata or {})
@@ -178,14 +179,22 @@ class Surrogate:
         )
 
     @classmethod
-    def load(cls, path):
+    def load(cls, path, bounds=None):
+        """bounds=None expects the calibration box. Pass (lower, upper) to load a model
+        trained on a custom box; any mismatch with the saved bounds is refused."""
         blob = torch.load(Path(path), weights_only=True)
         if blob["format_version"] not in (1, FORMAT_VERSION):
             raise ValueError(f"Unsupported surrogate file version {blob['format_version']}")
-        if not (
-            np.allclose(blob["input_lower"], LOWER) and np.allclose(blob["input_upper"], UPPER)
-        ):
-            raise ValueError("Saved surrogate used different calibration bounds")
+        lower, upper = (LOWER, UPPER) if bounds is None else bounds
+        saved_lower, saved_upper = np.asarray(blob["input_lower"]), np.asarray(blob["input_upper"])
+        if not (np.allclose(saved_lower, lower) and np.allclose(saved_upper, upper)):
+            if bounds is None:
+                raise ValueError("Saved surrogate used different calibration bounds")
+            raise ValueError(
+                "Saved surrogate used different parameter bounds: saved "
+                f"{saved_lower.tolist()}..{saved_upper.tolist()}, requested "
+                f"{np.asarray(lower).tolist()}..{np.asarray(upper).tolist()}"
+            )
         architecture = "mlp" if blob["format_version"] == 1 else blob["architecture"]
         network = make_network(architecture, len(blob["coordinate_ids"]),
                                blob["width"], blob["depth"])
@@ -196,7 +205,9 @@ class Surrogate:
             if not torch.linalg.svdvals(network.affine)[-1].item() > 0:
                 raise ValueError("Singular ambient affine map")
         scaler = OutputScaler(blob["output_mean"], blob["output_std"])
-        return cls(network, scaler, blob["coordinate_ids"], json.loads(blob["metadata"]))
+        input_scaler = None if bounds is None else InputScaler(saved_lower, saved_upper)
+        return cls(network, scaler, blob["coordinate_ids"], json.loads(blob["metadata"]),
+                   input_scaler=input_scaler)
 
 
 @dataclass(frozen=True)
@@ -225,15 +236,18 @@ def set_seeds(seed):
     torch.manual_seed(seed)
 
 
-def train(data, contracts, config=TrainConfig(), metadata=None, verbose=False):
+def train(data, contracts, config=TrainConfig(), metadata=None, verbose=False,
+          input_scaler=None):
     """Fit one network to generate() output for these contracts. The test set is never
-    seen here; a validation slice of the training rows drives LR decay and stopping."""
+    seen here; a validation slice of the training rows drives LR decay and stopping.
+    input_scaler=None uses the calibration box (see surrogate_box for custom boxes)."""
     contracts = tuple(contracts)
     ids = tuple(str(i) for i in data["coordinate_ids"])
     if ids != tuple(c.coordinate_id for c in contracts):
         raise ValueError("Training data was generated for a different contract set")
     set_seeds(config.seed)
-    x = InputScaler().to_unit(data["parameters"])
+    input_scaler = InputScaler() if input_scaler is None else input_scaler
+    x = input_scaler.to_unit(data["parameters"])
     prices = np.asarray(data["prices"], dtype=float)
     if (prices.shape != (len(x), len(contracts)) or len(x) < 3
             or not np.isfinite(prices).all()):
@@ -298,7 +312,7 @@ def train(data, contracts, config=TrainConfig(), metadata=None, verbose=False):
         "monte_carlo": str(data.get("monte_carlo", "")),
         **(metadata or {}),
     }
-    return Surrogate(network, output_scaler, ids, meta), history
+    return Surrogate(network, output_scaler, ids, meta, input_scaler=input_scaler), history
 
 
 def price_points(contracts, parameters, config):

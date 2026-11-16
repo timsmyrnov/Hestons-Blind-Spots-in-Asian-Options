@@ -1,0 +1,49 @@
+{
+  "timing": {
+    "what": "one pricing = one parameter vector priced on all 27 contracts; single thread; batch = 1000 different parameter vectors",
+    "network": {
+      "single_call_seconds": 0.00010177097283303738,
+      "batch_seconds": 0.00353591691236943,
+      "batch_seconds_per_pricing": 3.53591691236943e-06
+    },
+    "mc_16k": {
+      "single_call_seconds": 0.033274166053161025,
+      "batch_seconds": 33.247477459022775,
+      "batch_seconds_per_pricing": 0.033247477459022776,
+      "single_call_slowdown_vs_network": 326.9514393632622,
+      "batch_slowdown_vs_network": 9402.788097965664
+    },
+    "mc_4k": {
+      "single_call_seconds": 0.009218770544975996,
+      "batch_seconds": 9.192368917050771,
+      "batch_seconds_per_pricing": 0.009192368917050771,
+      "single_call_slowdown_vs_network": 90.58349633839164,
+      "batch_slowdown_vs_network": 2599.7129301578902
+    }
+  },
+  "break_even": {
+    "what": "core-seconds; per-call costs are single-call, single-thread times",
+    "upfront_core_seconds": {
+      "training_data": 664.859531,
+      "training": 880.937444,
+      "test_data": 87.825554
+    },
+    "fixed_core_seconds_data_plus_training": 1545.796975,
+    "fixed_core_seconds_including_test_set": 1633.622529,
+    "network_seconds_per_call": 0.00010177097283303738,
+    "mc_16k": {
+      "seconds_per_call": 0.033274166053161025,
+      "break_even_calls": 46598.89559547342,
+      "break_even_calls_including_test_set": 49246.44497462822
+    },
+    "mc_4k": {
+      "seconds_per_call": 0.009218770544975996,
+      "break_even_calls": 169551.0636770447,
+      "break_even_calls_including_test_set": 179184.22788913388
+    }
+  },
+  "wall_seconds": {
+    "training_data": 49.38917370792478,
+    "test_data": 7.785650291945785
+  }
+}

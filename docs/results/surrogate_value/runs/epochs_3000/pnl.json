@@ -1,0 +1,129 @@
+{
+  "what": "synthetic trading test: market = truth + N(0, noise); PnL judged against truth. Measures the trading cost of surrogate approximation error vs Monte Carlo, not Heston model error",
+  "scenarios": 512,
+  "contracts_per_scenario": 27,
+  "opportunities": 13824,
+  "rules": {
+    "market_noise_usd_per_bbl": 0.07,
+    "threshold_usd_per_bbl": 0.03,
+    "cost_per_trade_usd_per_bbl": 0.01,
+    "barrels_per_contract": 1000.0,
+    "market_seed": 20240614,
+    "bootstrap": "10000 paired resamples of scenarios, seed 7"
+  },
+  "traders": {
+    "oracle": {
+      "total_pnl_usd": 610904.1161158446,
+      "trades": 9231,
+      "buys": 4665,
+      "sells": 4566,
+      "wrong_way_trades": 0,
+      "wrong_way_share": 0.0,
+      "pnl_per_trade_usd": 66.17962475526429,
+      "pct_of_oracle": 100.0,
+      "pct_of_oracle_ci95": [
+        100.0,
+        100.0
+      ],
+      "total_pnl_ci95_usd": [
+        600954.4471864544,
+        620803.1347720496
+      ]
+    },
+    "network": {
+      "total_pnl_usd": 539121.2770806721,
+      "trades": 9718,
+      "buys": 5449,
+      "sells": 4269,
+      "wrong_way_trades": 626,
+      "wrong_way_share": 0.06441654661452974,
+      "pnl_per_trade_usd": 55.47656689449188,
+      "pct_of_oracle": 88.24973721055099,
+      "pct_of_oracle_ci95": [
+        87.0463207236285,
+        89.39574123075859
+      ],
+      "total_pnl_ci95_usd": [
+        526947.3471133395,
+        551483.7284525266
+      ]
+    },
+    "mc_16k": {
+      "total_pnl_usd": 542713.0850444941,
+      "trades": 9746,
+      "buys": 5475,
+      "sells": 4271,
+      "wrong_way_trades": 631,
+      "wrong_way_share": 0.06474451056843833,
+      "pnl_per_trade_usd": 55.68572594341208,
+      "pct_of_oracle": 88.83768675436139,
+      "pct_of_oracle_ci95": [
+        87.63168214959839,
+        90.0065681448837
+      ],
+      "total_pnl_ci95_usd": [
+        530480.1948933882,
+        555144.0115310614
+      ]
+    },
+    "mc_4k": {
+      "total_pnl_usd": 508490.98305703944,
+      "trades": 9837,
+      "buys": 4919,
+      "sells": 4918,
+      "wrong_way_trades": 990,
+      "wrong_way_share": 0.10064043915827996,
+      "pnl_per_trade_usd": 51.69167256857166,
+      "pct_of_oracle": 83.23580896623314,
+      "pct_of_oracle_ci95": [
+        81.69609640916659,
+        84.69546688357575
+      ],
+      "total_pnl_ci95_usd": [
+        495351.3072383823,
+        521579.18361666554
+      ]
+    }
+  },
+  "differences": {
+    "network_minus_mc_16k": {
+      "point_usd": -3591.807963822037,
+      "ci95_usd": [
+        -6015.096284872028,
+        -1108.0386345596228
+      ],
+      "point_pct_of_oracle": -0.5879495438103959,
+      "ci95_pct_of_oracle": [
+        -0.9843750742539839,
+        -0.18237144404647326
+      ],
+      "share_of_resamples_a_at_least_b": 0.0018
+    },
+    "network_minus_oracle": {
+      "point_usd": -71782.83903517248,
+      "ci95_usd": [
+        -79087.08190664407,
+        -64913.65470850224
+      ],
+      "point_pct_of_oracle": -11.75026278944901,
+      "ci95_pct_of_oracle": [
+        -12.953679276371503,
+        -10.604258769241413
+      ],
+      "share_of_resamples_a_at_least_b": 0.0
+    },
+    "network_minus_mc_4k": {
+      "point_usd": 30630.294023632654,
+      "ci95_usd": [
+        23411.186584183128,
+        38171.43253268262
+      ],
+      "point_pct_of_oracle": 5.013928244317853,
+      "ci95_pct_of_oracle": [
+        3.8314622257014372,
+        6.2465778813790624
+      ],
+      "share_of_resamples_a_at_least_b": 1.0
+    }
+  }
+}

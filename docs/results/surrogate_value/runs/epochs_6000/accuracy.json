@@ -1,0 +1,394 @@
+{
+  "what": "error vs average of two independent truth runs, truth noise subtracted; surrogate approximation and Monte Carlo sampling error, not model error",
+  "truth_stream_to_stream_rmse_usd_per_bbl": 0.018314362402990624,
+  "network": {
+    "points": 512,
+    "rmse_noise_corrected_usd_per_bbl": 0.03926175080529827,
+    "rmse_raw_usd_per_bbl": 0.040315493843612514,
+    "median_abs_error_usd_per_bbl": 0.017018298717628416,
+    "max_abs_error_usd_per_bbl": 0.2089328165217612,
+    "benchmark_noise_rms_usd_per_bbl": 0.009157181201495312,
+    "by_v0_decile": [
+      {
+        "v0_range": [
+          0.010057482397376971,
+          0.014398843979266312
+        ],
+        "points": 52,
+        "rmse_noise_corrected_usd_per_bbl": 0.020230377269849303,
+        "rmse_raw_usd_per_bbl": 0.020506551023751943,
+        "median_abs_error_usd_per_bbl": 0.008960187499830276,
+        "max_abs_error_usd_per_bbl": 0.12079556935595548,
+        "benchmark_noise_rms_usd_per_bbl": 0.003354172089995764
+      },
+      {
+        "v0_range": [
+          0.014398843979266312,
+          0.02045934373435122
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.020097898503506868,
+        "rmse_raw_usd_per_bbl": 0.020338421830849728,
+        "median_abs_error_usd_per_bbl": 0.007872239494885247,
+        "max_abs_error_usd_per_bbl": 0.1270296176796073,
+        "benchmark_noise_rms_usd_per_bbl": 0.0031186340459119564
+      },
+      {
+        "v0_range": [
+          0.02045934373435122,
+          0.029338079409249967
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.02266087801642616,
+        "rmse_raw_usd_per_bbl": 0.022969810478560764,
+        "median_abs_error_usd_per_bbl": 0.008715442540355944,
+        "max_abs_error_usd_per_bbl": 0.15248012602556926,
+        "benchmark_noise_rms_usd_per_bbl": 0.0037545706739457304
+      },
+      {
+        "v0_range": [
+          0.029338079409249967,
+          0.04195559350020537
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.023951309083025774,
+        "rmse_raw_usd_per_bbl": 0.024451037420037854,
+        "median_abs_error_usd_per_bbl": 0.010611384251722922,
+        "max_abs_error_usd_per_bbl": 0.13826953003144205,
+        "benchmark_noise_rms_usd_per_bbl": 0.004918132178526554
+      },
+      {
+        "v0_range": [
+          0.04195559350020537,
+          0.05990609780082471
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.026603902192153916,
+        "rmse_raw_usd_per_bbl": 0.027120672530961093,
+        "median_abs_error_usd_per_bbl": 0.014730169836292717,
+        "max_abs_error_usd_per_bbl": 0.11199224303182553,
+        "benchmark_noise_rms_usd_per_bbl": 0.0052690859436847065
+      },
+      {
+        "v0_range": [
+          0.05990609780082471,
+          0.08554319323415059
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.030303416988743986,
+        "rmse_raw_usd_per_bbl": 0.031106547961284356,
+        "median_abs_error_usd_per_bbl": 0.01591450575207709,
+        "max_abs_error_usd_per_bbl": 0.18006355611094715,
+        "benchmark_noise_rms_usd_per_bbl": 0.007022837380573923
+      },
+      {
+        "v0_range": [
+          0.08554319323415059,
+          0.1229454264246161
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.03727298328131551,
+        "rmse_raw_usd_per_bbl": 0.03815831898055153,
+        "median_abs_error_usd_per_bbl": 0.02181855399980215,
+        "max_abs_error_usd_per_bbl": 0.1640165211347105,
+        "benchmark_noise_rms_usd_per_bbl": 0.008172026965954898
+      },
+      {
+        "v0_range": [
+          0.1229454264246161,
+          0.1754285925663163
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.04613338204963209,
+        "rmse_raw_usd_per_bbl": 0.04742614204641355,
+        "median_abs_error_usd_per_bbl": 0.02694328471702656,
+        "max_abs_error_usd_per_bbl": 0.17216180256021474,
+        "benchmark_noise_rms_usd_per_bbl": 0.010997727495681961
+      },
+      {
+        "v0_range": [
+          0.1754285925663163,
+          0.25102219635560963
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.057534779773146055,
+        "rmse_raw_usd_per_bbl": 0.05914490278543595,
+        "median_abs_error_usd_per_bbl": 0.03481885672184859,
+        "max_abs_error_usd_per_bbl": 0.18738038062560491,
+        "benchmark_noise_rms_usd_per_bbl": 0.0137065182287207
+      },
+      {
+        "v0_range": [
+          0.25102219635560963,
+          0.3593245813667684
+        ],
+        "points": 52,
+        "rmse_noise_corrected_usd_per_bbl": 0.07081451020396634,
+        "rmse_raw_usd_per_bbl": 0.07306173626746892,
+        "median_abs_error_usd_per_bbl": 0.044646925204036236,
+        "max_abs_error_usd_per_bbl": 0.2089328165217612,
+        "benchmark_noise_rms_usd_per_bbl": 0.01798116934433162
+      }
+    ]
+  },
+  "mc_16k": {
+    "points": 512,
+    "rmse_noise_corrected_usd_per_bbl": 0.038506793481078216,
+    "rmse_raw_usd_per_bbl": 0.039580640618254614,
+    "median_abs_error_usd_per_bbl": 0.015489762483278824,
+    "max_abs_error_usd_per_bbl": 0.20495935743201166,
+    "benchmark_noise_rms_usd_per_bbl": 0.009157181201495312,
+    "by_v0_decile": [
+      {
+        "v0_range": [
+          0.010057482397376971,
+          0.014398843979266312
+        ],
+        "points": 52,
+        "rmse_noise_corrected_usd_per_bbl": 0.017835540463791138,
+        "rmse_raw_usd_per_bbl": 0.018148194787494364,
+        "median_abs_error_usd_per_bbl": 0.005958260902363325,
+        "max_abs_error_usd_per_bbl": 0.09661825291053638,
+        "benchmark_noise_rms_usd_per_bbl": 0.003354172089995764
+      },
+      {
+        "v0_range": [
+          0.014398843979266312,
+          0.02045934373435122
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.018598708330994123,
+        "rmse_raw_usd_per_bbl": 0.0188583623332916,
+        "median_abs_error_usd_per_bbl": 0.005750219625376474,
+        "max_abs_error_usd_per_bbl": 0.11794266735275727,
+        "benchmark_noise_rms_usd_per_bbl": 0.0031186340459119564
+      },
+      {
+        "v0_range": [
+          0.02045934373435122,
+          0.029338079409249967
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.022305001471694834,
+        "rmse_raw_usd_per_bbl": 0.022618795096069153,
+        "median_abs_error_usd_per_bbl": 0.008065813521751175,
+        "max_abs_error_usd_per_bbl": 0.1290369280303061,
+        "benchmark_noise_rms_usd_per_bbl": 0.0037545706739457304
+      },
+      {
+        "v0_range": [
+          0.029338079409249967,
+          0.04195559350020537
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.024615447827858242,
+        "rmse_raw_usd_per_bbl": 0.025101958009116923,
+        "median_abs_error_usd_per_bbl": 0.009834308486888155,
+        "max_abs_error_usd_per_bbl": 0.1394756798026755,
+        "benchmark_noise_rms_usd_per_bbl": 0.004918132178526554
+      },
+      {
+        "v0_range": [
+          0.04195559350020537,
+          0.05990609780082471
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.0238642163921286,
+        "rmse_raw_usd_per_bbl": 0.024438987104466403,
+        "median_abs_error_usd_per_bbl": 0.012973334574405193,
+        "max_abs_error_usd_per_bbl": 0.09909958893404713,
+        "benchmark_noise_rms_usd_per_bbl": 0.0052690859436847065
+      },
+      {
+        "v0_range": [
+          0.05990609780082471,
+          0.08554319323415059
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.029401756079569883,
+        "rmse_raw_usd_per_bbl": 0.030228852201770927,
+        "median_abs_error_usd_per_bbl": 0.015086079658535922,
+        "max_abs_error_usd_per_bbl": 0.11911214226511557,
+        "benchmark_noise_rms_usd_per_bbl": 0.007022837380573923
+      },
+      {
+        "v0_range": [
+          0.08554319323415059,
+          0.1229454264246161
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.03621178138034835,
+        "rmse_raw_usd_per_bbl": 0.03712243439579949,
+        "median_abs_error_usd_per_bbl": 0.020343066514197705,
+        "max_abs_error_usd_per_bbl": 0.1470852651803929,
+        "benchmark_noise_rms_usd_per_bbl": 0.008172026965954898
+      },
+      {
+        "v0_range": [
+          0.1229454264246161,
+          0.1754285925663163
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.04603099936617921,
+        "rmse_raw_usd_per_bbl": 0.04732655610456427,
+        "median_abs_error_usd_per_bbl": 0.025962655346210006,
+        "max_abs_error_usd_per_bbl": 0.1623682399970754,
+        "benchmark_noise_rms_usd_per_bbl": 0.010997727495681961
+      },
+      {
+        "v0_range": [
+          0.1754285925663163,
+          0.25102219635560963
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.05663313177386022,
+        "rmse_raw_usd_per_bbl": 0.05826817533156216,
+        "median_abs_error_usd_per_bbl": 0.03462535397986355,
+        "max_abs_error_usd_per_bbl": 0.17414675593393092,
+        "benchmark_noise_rms_usd_per_bbl": 0.0137065182287207
+      },
+      {
+        "v0_range": [
+          0.25102219635560963,
+          0.3593245813667684
+        ],
+        "points": 52,
+        "rmse_noise_corrected_usd_per_bbl": 0.07031237899657929,
+        "rmse_raw_usd_per_bbl": 0.07257515477867157,
+        "median_abs_error_usd_per_bbl": 0.04568299176065538,
+        "max_abs_error_usd_per_bbl": 0.20495935743201166,
+        "benchmark_noise_rms_usd_per_bbl": 0.01798116934433162
+      }
+    ]
+  },
+  "mc_4k": {
+    "points": 512,
+    "rmse_noise_corrected_usd_per_bbl": 0.04977947838432977,
+    "rmse_raw_usd_per_bbl": 0.050614725483528744,
+    "median_abs_error_usd_per_bbl": 0.020403323907889792,
+    "max_abs_error_usd_per_bbl": 0.2773341036057513,
+    "benchmark_noise_rms_usd_per_bbl": 0.009157181201495312,
+    "by_v0_decile": [
+      {
+        "v0_range": [
+          0.010057482397376971,
+          0.014398843979266312
+        ],
+        "points": 52,
+        "rmse_noise_corrected_usd_per_bbl": 0.0263997531588753,
+        "rmse_raw_usd_per_bbl": 0.02661197920596762,
+        "median_abs_error_usd_per_bbl": 0.009034118219726522,
+        "max_abs_error_usd_per_bbl": 0.17432702110719944,
+        "benchmark_noise_rms_usd_per_bbl": 0.003354172089995764
+      },
+      {
+        "v0_range": [
+          0.014398843979266312,
+          0.02045934373435122
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.02381842757094164,
+        "rmse_raw_usd_per_bbl": 0.024021727045833195,
+        "median_abs_error_usd_per_bbl": 0.009262092374241332,
+        "max_abs_error_usd_per_bbl": 0.1264816055772009,
+        "benchmark_noise_rms_usd_per_bbl": 0.0031186340459119564
+      },
+      {
+        "v0_range": [
+          0.02045934373435122,
+          0.029338079409249967
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.027595729153734278,
+        "rmse_raw_usd_per_bbl": 0.02784997429930436,
+        "median_abs_error_usd_per_bbl": 0.012487327002533632,
+        "max_abs_error_usd_per_bbl": 0.12399445068680937,
+        "benchmark_noise_rms_usd_per_bbl": 0.0037545706739457304
+      },
+      {
+        "v0_range": [
+          0.029338079409249967,
+          0.04195559350020537
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.033446048072940104,
+        "rmse_raw_usd_per_bbl": 0.03380571188161668,
+        "median_abs_error_usd_per_bbl": 0.014570717598248795,
+        "max_abs_error_usd_per_bbl": 0.20026099494072191,
+        "benchmark_noise_rms_usd_per_bbl": 0.004918132178526554
+      },
+      {
+        "v0_range": [
+          0.04195559350020537,
+          0.05990609780082471
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.03308879207460548,
+        "rmse_raw_usd_per_bbl": 0.03350569246618267,
+        "median_abs_error_usd_per_bbl": 0.01563040697192264,
+        "max_abs_error_usd_per_bbl": 0.1420938235111482,
+        "benchmark_noise_rms_usd_per_bbl": 0.0052690859436847065
+      },
+      {
+        "v0_range": [
+          0.05990609780082471,
+          0.08554319323415059
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.04207843040748866,
+        "rmse_raw_usd_per_bbl": 0.042660456519262105,
+        "median_abs_error_usd_per_bbl": 0.020427645510000758,
+        "max_abs_error_usd_per_bbl": 0.2180607382999309,
+        "benchmark_noise_rms_usd_per_bbl": 0.007022837380573923
+      },
+      {
+        "v0_range": [
+          0.08554319323415059,
+          0.1229454264246161
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.04757502338427898,
+        "rmse_raw_usd_per_bbl": 0.048271781350463804,
+        "median_abs_error_usd_per_bbl": 0.025084205049797248,
+        "max_abs_error_usd_per_bbl": 0.17487491924731735,
+        "benchmark_noise_rms_usd_per_bbl": 0.008172026965954898
+      },
+      {
+        "v0_range": [
+          0.1229454264246161,
+          0.1754285925663163
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.05621146154563488,
+        "rmse_raw_usd_per_bbl": 0.057277206803105093,
+        "median_abs_error_usd_per_bbl": 0.031215473898395185,
+        "max_abs_error_usd_per_bbl": 0.18837643215523237,
+        "benchmark_noise_rms_usd_per_bbl": 0.010997727495681961
+      },
+      {
+        "v0_range": [
+          0.1754285925663163,
+          0.25102219635560963
+        ],
+        "points": 51,
+        "rmse_noise_corrected_usd_per_bbl": 0.07024190299250695,
+        "rmse_raw_usd_per_bbl": 0.07156670718960745,
+        "median_abs_error_usd_per_bbl": 0.04044495991236219,
+        "max_abs_error_usd_per_bbl": 0.22467211985808788,
+        "benchmark_noise_rms_usd_per_bbl": 0.0137065182287207
+      },
+      {
+        "v0_range": [
+          0.25102219635560963,
+          0.3593245813667684
+        ],
+        "points": 52,
+        "rmse_noise_corrected_usd_per_bbl": 0.09128611437683587,
+        "rmse_raw_usd_per_bbl": 0.09304019093386627,
+        "median_abs_error_usd_per_bbl": 0.061058340466386696,
+        "max_abs_error_usd_per_bbl": 0.2773341036057513,
+        "benchmark_noise_rms_usd_per_bbl": 0.01798116934433162
+      }
+    ]
+  }
+}
