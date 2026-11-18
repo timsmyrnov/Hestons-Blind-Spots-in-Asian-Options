@@ -29,6 +29,9 @@ HTML = r"""<!doctype html>
   .hud { position: fixed; left: 28px; top: 22px; color: var(--ink); pointer-events: none; }
   .date { font-size: 23px; font-weight: 700; }
   .avg { margin-top: 3px; font-size: 15px; color: var(--muted); }
+  .warning { margin-top: 4px; font-size: 14px; color: #926321; }
+  .view-note { margin-top: 4px; font-size: 14px; color: #604b83; }
+  .line-note { position: fixed; left: 28px; bottom: 49px; font-size: 13px; color: var(--muted); }
   .legend { position: fixed; left: 28px; bottom: 22px; display: flex; gap: 18px;
     font-size: 14px; color: var(--muted); pointer-events: none; }
   .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px;
@@ -36,6 +39,9 @@ HTML = r"""<!doctype html>
   .num { font-size: 12.5px; color: var(--ink); padding: 0 4px; border-radius: 4px;
     background: rgba(255, 255, 255, 0.82); opacity: 0; white-space: nowrap; }
   .num.day { font-size: 14px; font-weight: 700; }
+  .bend { font-size: 13px; font-weight: 700; color: #17634d; padding: 4px 7px;
+    background: rgba(237, 249, 241, 0.95); border: 1px solid #64a58a;
+    border-radius: 5px; white-space: nowrap; opacity: 0; }
   .tick { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
   .axis { font-size: 13.5px; color: var(--muted); white-space: nowrap; }
   .manifold, .math { white-space: nowrap; color: var(--ink); }
@@ -54,17 +60,23 @@ HTML = r"""<!doctype html>
 </script>
 </head>
 <body>
-<div class="hud"><div class="date"></div><div class="avg"></div></div>
+<div class="hud"><div class="date"></div><div class="avg"></div><div class="view-note"></div><div class="warning"></div></div>
 <div class="legend">
   <span><i style="background:#4AAEEA"></i>Market manifold</span>
   <span><i style="background:#8B5BD0"></i>Heston manifold</span>
 </div>
+<div class="line-note"></div>
 <button class="replay" aria-label="Replay">&#8635;</button>
 <script type="module">
 import * as THREE from "three";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
 const D = __DATA__;
+document.querySelector(".line-note").textContent = D.localLineNote || "";
+document.querySelector(".view-note").textContent = D.viewNote || "";
+const sheetNames = D.sheetNames || ["Market manifold", "Heston manifold"];
+const sheetSymbols = D.sheetSymbols || ["M_m", "M_h"];
+document.querySelectorAll(".legend span").forEach((el, i) => el.lastChild.textContent = sheetNames[i]);
 const days = D.days, nDays = days.length;
 const FLOW = D.flow || D.seconds, FINALE = D.finale || 0;  // days play, then the finale
 const query = new URLSearchParams(location.search);
@@ -140,7 +152,7 @@ function label(kind, text, position, center = [0.5, 0.5]) {
   if (MATH_KINDS.has(kind)) {
     item.segs = parseMath(text);
     el.innerHTML = item.segs.map(([t, sub]) => {
-      const f = /[0-9]/.test(t) ? "CM" : "CMI";
+      const f = /[0-9+]/.test(t) ? "CM" : "CMI";
       return sub ? `<sub style="font-family:${f}">${t}</sub>` : `<span style="font-family:${f}">${t}</span>`;
     }).join("");
   }
@@ -179,7 +191,9 @@ function sheet(keyName, stops, opacity, order) {
     const k = id[i * m + j];
     if (k < 0) continue;
     const h = yhi > ylo ? (frames[0][3 * k + 1] - ylo) / (yhi - ylo) : 0.5;
-    const c = ramp(stops, 0.12 + 0.76 * (0.6 * h + 0.4 * j / (m - 1)));
+    // A restrained diagonal gradient, anchored to the mesh rather than animated.
+    const tone = 0.10 + 0.80 * (0.60 * j / (m - 1) + 0.25 * i / (n - 1) + 0.15 * h);
+    const c = ramp(stops, tone);
     col.set([c.r, c.g, c.b, fades ? fades[0][k] : 1], 4 * k);
     edge.set([ink.r, ink.g, ink.b, fades ? fades[0][k] : 1], 4 * k);
   }
@@ -235,8 +249,9 @@ function morph(s, k, w) {
 }
 const MARKET = ["#D3ECFB", "#4AAEEA", "#1F6FB0"];
 const HESTON = ["#E2D4F5", "#8B5BD0", "#45207F"];
-const heston = sheet("heston", HESTON, 0.96, 0);
-const market = sheet("market", MARKET, 0.74, 3);
+const hestonOnTop = D.topSheet === "heston";
+const heston = sheet("heston", HESTON, hestonOnTop ? 0.64 : 0.96, hestonOnTop ? 3 : 0);
+const market = sheet("market", MARKET, hestonOnTop ? 0.96 : 0.74, hestonOnTop ? 0 : 3);
 
 // ---- the gap axis can zoom in once a stormy stretch has passed (D.rescale)
 let gain = 1, shift = 0;  // drawn height y -> gain * y + shift
@@ -254,6 +269,14 @@ const RS = D.rescale ? (() => {
   return { g, off: full[0] - g * ylo };
 })() : null;
 function setScale(seconds) {
+  if (D.verticalRanges) {
+    const [k, w] = when(seconds / D.seconds);
+    const a = D.verticalRanges[k], b = D.verticalRanges[Math.min(k + 1, nDays - 1)];
+    const low = a[0] + (b[0] - a[0]) * w, high = a[1] + (b[1] - a[1]) * w;
+    gain = (hi[2] - lo[2]) / (high - low);
+    shift = (lo[2] - mid[2]) * Su - gain * (low - mid[2]) * Su;
+    return;
+  }
   if (!RS) return;
   const x = smooth((seconds - D.rescale.at) / D.rescale.over);
   gain = 1 + (RS.g - 1) * x;
@@ -268,15 +291,14 @@ const DIST = ["#2E9E5B", "#9BC53D", "#E8B931", "#E07B39", "#C8413A"];
 // D.gapScale[0] or less, red at D.gapScale[1] or more. Equal gaps, equal colours.
 const [G0, G1] = D.gapScale || [0.02, 0.2];
 const gapShade = d => clamp(Math.log(Math.max(d, 1e-9) / G0) / Math.log(G1 / G0));
-// Colours rank each line against the other lines on screen at that moment (green =
-// smallest, red = largest), so a calm stretch is not all green after a stormy one.
+// Every vector uses this same fixed value scale, including local and corner vectors.
 const up = new THREE.Vector3(0, 1, 0);
 const lines = days[0].lines.map((l0, i) => {
-  const r = l0.day ? 0.036 : 0.017;
+  const r = l0.day ? 0.036 : 0.010;
   const mat = new THREE.MeshBasicMaterial({ color: GREY.clone(), transparent: true,
                                             opacity: 0.55, depthWrite: false, toneMapped: false });
   const tube = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 14, 1, true), mat);
-  tube.renderOrder = 4;  // after the see-through market sheet, so it never tints a line
+  tube.renderOrder = 4;  // after the translucent upper sheet, so it never tints a line
   scene.add(tube);
   return { tube, mat, text: label(l0.day ? "num day" : "num", "", new THREE.Vector3(), [-0.12, 0.5]) };
 });
@@ -304,7 +326,7 @@ function seen(s, idx, k, w) {
 }
 const at = (s, idx) => new THREE.Vector3(s.position.array[3 * idx], s.position.array[3 * idx + 1],
                                          s.position.array[3 * idx + 2]);
-const tags = [[heston, "M_h", "#45207F", 0, 1], [market, "M_m", "#1F6FB0", 1, 1]].map(([s, text, hex, ci, cj]) => {
+const tags = [[heston, sheetSymbols[1], "#45207F", 0, 1], [market, sheetSymbols[0], "#1F6FB0", 0, 1]].map(([s, text, hex, ci, cj]) => {
   const idx = vertexAt(s, ci * (s.n - 1), cj * (s.m - 1));
   const tag = label("manifold", text, new THREE.Vector3(), [0.5, 0.5]);
   tag.color = hex;
@@ -319,6 +341,64 @@ const tags = [[heston, "M_h", "#45207F", 0, 1], [market, "M_m", "#1F6FB0", 1, 1]
   return tag;
 });
 let current = [0, 0];
+
+// Two local tangent patches on the displayed Heston slice. Geometry and bend
+// are interpolated before camera scaling; zoom cannot change the reported bend.
+const tangentPatches = (D.tangentPlanes ? ["A", "B"] : []).map((name, index) => {
+  const fill = new THREE.MeshBasicMaterial({ color: index ? 0x8acaa3 : 0x66b99e,
+    side: THREE.DoubleSide, transparent: true, opacity: 0, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, toneMapped: false });
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(18), 3));
+  const mesh = new THREE.Mesh(geometry, fill);
+  mesh.renderOrder = 5;
+  mesh.frustumCulled = false;
+  const ink = new THREE.LineBasicMaterial({ color: 0x267c60, transparent: true,
+    opacity: 0, depthWrite: false, toneMapped: false });
+  const rim = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(
+    Array.from({length: 4}, () => new THREE.Vector3())), ink);
+  const cross = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(
+    Array.from({length: 4}, () => new THREE.Vector3())), ink);
+  const leader = new THREE.Line(new THREE.BufferGeometry().setFromPoints(
+    [new THREE.Vector3(), new THREE.Vector3()]), ink);
+  for (const item of [rim, cross, leader]) { item.renderOrder = 6; item.frustumCulled = false; }
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.045, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0x17634d, transparent: true, opacity: 0, depthWrite: false }));
+  dot.renderOrder = 7;
+  const text = label("bend", "", new THREE.Vector3());
+  scene.add(mesh, rim, cross, leader, dot);
+  function positions(object, points) {
+    const attr = object.geometry.attributes.position;
+    points.forEach((p, i) => attr.setXYZ(i, p.x, p.y, p.z));
+    attr.needsUpdate = true;
+  }
+  return { show(progress, k, w) {
+    const alpha = smooth((progress - D.tangentReveal) / 0.06);
+    for (const item of [mesh, rim, cross, leader, dot]) item.visible = alpha > 0;
+    text.el.style.opacity = alpha.toFixed(3);
+    if (!alpha) return;
+    const a = days[k].tangents[index], b = days[Math.min(k + 1, nDays - 1)].tangents[index];
+    const p = lerp(a.p, b.p, w), u = lerp(a.u, b.u, w), v = lerp(a.v, b.v, w);
+    const point = (x, y) => Y(V(p.map((q, axis) => q + x * u[axis] + y * v[axis])));
+    const corners = [[-1,-1], [1,-1], [1,1], [-1,1]].map(([x,y]) => point(x,y));
+    positions(mesh, [corners[0], corners[1], corners[2], corners[0], corners[2], corners[3]]);
+    positions(rim, corners);
+    positions(cross, [point(-1,0), point(1,0), point(0,-1), point(0,1)]);
+    const center = point(0,0);
+    dot.position.copy(center);
+    // Callouts sit above the patches, away from the gap labels between sheets.
+    const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    text.obj.position.copy(center).addScaledVector(screenUp, 2.6)
+      .addScaledVector(screenRight, index ? 0.65 : -0.65);
+    positions(leader, [center, text.obj.position]);
+    const bend = Math.max(...a.departures.map((d, i) => Math.abs(d + (b.departures[i] - d) * w))) * 1000;
+    text.el.textContent = `Tangent ${name}, bend ${bend < 0.005 ? "under 0.01" : bend.toFixed(2)} mUSD/bbl`;
+    fill.opacity = 0.55 * alpha;
+    ink.opacity = 0.8 * alpha;
+    dot.material.opacity = alpha;
+  }};
+});
 
 // ---- the finale: p on M_h, its tangent plane T_pM_h and two tangent vectors
 const finale = FINALE > 0 ? (() => {
@@ -412,7 +492,7 @@ const dataRange = { x: [box.x[0] / Sf + mid[0], box.x[1] / Sf + mid[0]],
                     y: [box.y[0] / Su + mid[2], box.y[1] / Su + mid[2]],
                     z: [-box.z[1] / Sf + mid[1], -box.z[0] / Sf + mid[1]] };
 const X0 = box.x[0], X1 = box.x[1], Y0 = box.y[0], Y1 = box.y[1], Z0 = box.z[0], Z1 = box.z[1];
-const tickLen = 0.18, units = ` (${D.units})`;
+const tickLen = 0.18, axisUnits = D.axisUnits || [D.units, D.units, D.units];
 segment(new THREE.Vector3(X0, Y0, Z1), new THREE.Vector3(X1, Y0, Z1));  // slice direction 1, front
 segment(new THREE.Vector3(X0, Y0, Z0), new THREE.Vector3(X0, Y0, Z1));  // slice direction 2, left
 segment(new THREE.Vector3(X0, Y0, Z0), new THREE.Vector3(X0, Y1, Z0));  // gap, back-left
@@ -444,9 +524,9 @@ function placeGapTicks() {
     tick.text.el.textContent = t.toFixed(T.digits);
   });
 }
-label("axis", D.axes[0] + units, new THREE.Vector3((X0 + X1) / 2, Y0, Z1 + 11 * tickLen));
-label("axis", D.axes[1] + units, new THREE.Vector3(X0 - 13 * tickLen, Y0, (Z0 + Z1) / 2));
-label("axis", D.axes[2] + units, new THREE.Vector3(X0 - 1.5 * tickLen, Y1 + 2.5 * tickLen, Z0));
+label("axis", D.axes[0] + ` (${axisUnits[0]})`, new THREE.Vector3((X0 + X1) / 2, Y0, Z1 + 11 * tickLen));
+label("axis", D.axes[1] + ` (${axisUnits[1]})`, new THREE.Vector3(X0 - 13 * tickLen, Y0, (Z0 + Z1) / 2));
+label("axis", D.axes[2] + ` (${axisUnits[2]})`, new THREE.Vector3(X0 - 1.5 * tickLen, Y1 + 2.5 * tickLen, Z0));
 
 let bottom = Infinity, radius = 0;
 for (const s of [heston, market]) for (const f of s.frames) for (let i = 0; i < f.length; i += 3) {
@@ -469,12 +549,14 @@ scene.add(floor);
 let distance = 20;
 function fit() {
   const v = camera.fov * deg, h = 2 * Math.atan(Math.tan(v / 2) * camera.aspect);
-  distance = 0.92 * radius / Math.sin(Math.min(v, h) / 2);
+  distance = 0.99 * radius / Math.sin(Math.min(v, h) / 2);
 }
 fit();
 
 // ---- timeline: hold on each day, glide to the next
 const dateEl = document.querySelector(".date"), avgEl = document.querySelector(".avg");
+const warningEl = document.querySelector(".warning");
+let errorReveal = 0;
 function when(progress) {
   const t = Math.min(clamp(progress) * D.seconds, FLOW), seg = D.hold + D.move;
   const k = Math.min(Math.floor(t / seg), nDays - 1), local = t - k * seg;
@@ -486,7 +568,8 @@ function frame(progress) {
   setScale(t);
   const e = ease(Math.min(t / FLOW, 1));
   const zoom = FINALE > 0 ? ease((t - FLOW) / FINALE) : 0;  // the finale: zoom onto p
-  const az = (-58 + 96 * e + 16 * zoom) * deg, el = (32 - 14 * e + 16 * zoom) * deg;  // orbit, sinking slowly
+  const az = (D.fixedCamera ? -48 : -58 + 96 * e + 16 * zoom) * deg;
+  const el = (D.fixedCamera ? 26 : D.steadySurfaces ? 32 : 32 - 14 * e + 16 * zoom) * deg;
   const [k, w] = when(progress), A = days[k], B = days[Math.min(k + 1, nDays - 1)];
   current = [k, w];
   morph(heston, k, w);
@@ -497,9 +580,12 @@ function frame(progress) {
                       target.z + dist * Math.cos(el) * Math.cos(az));
   camera.lookAt(target);
   tags.forEach(tag => tag.place());
+  tangentPatches.forEach(patch => patch.show(progress, k, w));
   placeGapTicks();
   if (finale) finale.show((t - FLOW) / FINALE);
   const b = smooth((progress - D.reveal) / 0.06);
+  errorReveal = b;
+  document.querySelector(".line-note").style.opacity = b.toFixed(3);
   let sum = 0, seen = 0;
   lines.forEach((L, i) => {
     const a = Y(V(lerp(A.lines[i].s, B.lines[i].s, w))), z = Y(V(lerp(A.lines[i].e, B.lines[i].e, w)));
@@ -510,12 +596,12 @@ function frame(progress) {
     L.text.obj.position.copy(a).addScaledVector(dir, 0.55);
     const d = A.lines[i].d + (B.lines[i].d - A.lines[i].d) * w;
     const vis = A.lines[i].v + (B.lines[i].v - A.lines[i].v) * w;  // 0 where a model is not valid
-    sum += d * vis;
-    seen += vis;
-    L.mat.color.copy(GREY).lerp(ramp(DIST, gapShade(Number(fmt(d)))), b);  // the gap on the label
-    L.mat.opacity = (0.55 + 0.42 * b) * vis * (1 - 0.8 * zoom);
+    const central = A.lines[i].day;
+    if (central) { sum += d * vis; seen += vis; }
+    L.mat.color.copy(GREY).lerp(ramp(DIST, gapShade(Number(fmt(d)))), b);
+    L.mat.opacity = (central ? 0.55 + 0.42 * b : 0.55 + 0.35 * b) * vis * (1 - 0.8 * zoom);
     L.tube.visible = vis > 0.001;
-    L.text.el.textContent = fmt(d);
+    L.text.el.textContent = (central ? "" : "≈") + fmt(d);
     L.text.el.style.opacity = (b * vis * (1 - zoom)).toFixed(3);
     if (i === 0) {
       dots[0].position.copy(a); dots[1].position.copy(z);
@@ -523,9 +609,16 @@ function frame(progress) {
     }
   });
   dateEl.textContent = (w < 0.5 ? A : B).date;
-  avgEl.textContent = (seen > 1e-6 ? `weekly gap ${fmt(sum / seen)} ${D.units}` : "weekly gap unavailable")
-    + (D.note ? ` · ${D.note}` : "");
-  market.mesh.material.opacity = (0.74 - 0.2 * b) * (1 - 0.45 * zoom);
+  avgEl.textContent = progress < D.reveal ? D.note || ""
+    : (seen > 1e-6 ? `weekly gap ${fmt(sum / seen)} ${D.units}` : "weekly gap unavailable")
+      + (D.note ? `, ${D.note}` : "");
+  const warnings = [...new Set([A.warning, B.warning].filter(Boolean).flatMap(x => x.split(" · ")))]
+    .filter(x => !x.includes("Numerical checks"));
+  warningEl.textContent = D.showWarnings === false ? "" : D.compactHud ? [
+    warnings.some(x => x.includes("beyond observed support")) ? "outside market support" : ""
+  ].filter(Boolean).join(" · ") : warnings.join(" · ");
+  market.mesh.material.opacity = hestonOnTop ? 0.96 :
+    (D.steadySurfaces ? 0.64 : (0.74 - 0.2 * b) * (1 - 0.45 * zoom));
   renderer.render(scene, camera);
   if (!exportTo) labels.render(scene, camera);
   return b;
@@ -539,10 +632,11 @@ function roundRect(c, x, y, w, h, r) {
   c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
 }
 const STYLE = { "num": [400, 12.5, "#1f2328"], "num day": [700, 14, "#1f2328"],
+                "bend": [700, 13, "#17634d"],
                 "tick": [400, 11.5, "#5f6672"], "axis": [400, 13.5, "#5f6672"],
                 "manifold": [400, 14, "#1f2328"], "math": [400, 20, "#1f2328"] };
 function mathFont(text, sub, size) {
-  return `400 ${(sub ? 0.7 : 1) * size}px ${/[0-9]/.test(text) ? '"CM"' : '"CMI"'}, serif`;
+  return `400 ${(sub ? 0.7 : 1) * size}px ${/[0-9+]/.test(text) ? '"CM"' : '"CMI"'}, serif`;
 }
 function drawMath(c, segs, x, y, size, color) {
   c.fillStyle = color;
@@ -578,27 +672,42 @@ function compose(out, c) {
       continue;
     }
     c.font = `${weight} ${size * k}px ${FONT}`;
-    const tw = c.measureText(t.el.textContent).width, pill = t.kind.startsWith("num");
-    const w = tw + (pill ? 8 * k : 0), h = (size + 4) * k;
+    const tw = c.measureText(t.el.textContent).width, bend = t.kind === "bend";
+    const pill = t.kind.startsWith("num") || bend;
+    const padding = bend ? 7 : 4;
+    const w = tw + (pill ? 2 * padding * k : 0), h = (size + (bend ? 8 : 4)) * k;
     const x = (v.x + 1) / 2 * W - t.center[0] * w, y = (1 - v.y) / 2 * H;
     c.globalAlpha = alpha;
-    if (pill) { c.fillStyle = "rgba(255, 255, 255, 0.82)"; roundRect(c, x, y - h / 2, w, h, 4 * k); c.fill(); }
+    if (pill) {
+      c.fillStyle = bend ? "rgba(237, 249, 241, 0.95)" : "rgba(255, 255, 255, 0.82)";
+      roundRect(c, x, y - h / 2, w, h, 4 * k); c.fill();
+      if (bend) { c.strokeStyle = "#64a58a"; c.lineWidth = k; c.stroke(); }
+    }
     c.fillStyle = color;
-    c.fillText(t.el.textContent, x + (pill ? 4 * k : 0), y + 0.5 * k);
+    c.fillText(t.el.textContent, x + (pill ? padding * k : 0), y + 0.5 * k);
   }
   c.globalAlpha = 1; c.textBaseline = "top";
   c.fillStyle = "#1f2328"; c.font = `700 ${23 * k}px ${FONT}`;
   c.fillText(dateEl.textContent, 28 * k, 24 * k);
   c.fillStyle = "#5f6672"; c.font = `400 ${15 * k}px ${FONT}`;
   c.fillText(avgEl.textContent, 28 * k, 54 * k);
+  c.fillStyle = "#926321"; c.font = `400 ${14 * k}px ${FONT}`;
+  c.fillText(warningEl.textContent, 28 * k, (D.viewNote ? 98 : 76) * k);
+  c.fillStyle = "#604b83";
+  c.fillText(D.viewNote || "", 28 * k, 76 * k);
+  c.fillStyle = "#5f6672"; c.font = `400 ${13 * k}px ${FONT}`;
+  c.globalAlpha = errorReveal;
+  c.fillText(D.localLineNote || "", 28 * k, H - 64 * k);
+  c.globalAlpha = 1;
   c.textBaseline = "middle"; c.font = `400 ${14 * k}px ${FONT}`;
   let x = 28 * k;
-  for (const [hex, name] of [["#4AAEEA", "Market manifold"], ["#8B5BD0", "Heston manifold"]]) {
+  for (const [hex, name] of [["#4AAEEA", sheetNames[0]], ["#8B5BD0", sheetNames[1]]]) {
     c.fillStyle = hex; roundRect(c, x, H - 38 * k, 11 * k, 11 * k, 3 * k); c.fill();
     c.fillStyle = "#5f6672"; c.fillText(name, x + 17 * k, H - 32 * k);
     x += 17 * k + c.measureText(name).width + 18 * k;
   }
   x += 14 * k;  // gap colour scale: the line colours read as numbers
+  c.globalAlpha = errorReveal;
   c.fillStyle = "#5f6672"; c.fillText("gap", x, H - 32 * k);
   x += c.measureText("gap").width + 8 * k;
   const barW = 120 * k, bar = c.createLinearGradient(x, 0, x + barW, 0);
@@ -607,6 +716,7 @@ function compose(out, c) {
   c.font = `400 ${11.5 * k}px ${FONT}`; c.fillStyle = "#5f6672"; c.textAlign = "center";
   [G0, Math.sqrt(G0 * G1), G1].forEach((g, i) => c.fillText(g.toFixed(g < 0.1 ? 3 : 2), x + i * barW / 2, H - 18 * k));
   c.textAlign = "left";
+  c.globalAlpha = 1;
 }
 async function record() {
   await document.fonts.load(`400 16px "CM"`);
@@ -821,6 +931,37 @@ def gap_scale(distances):
     return [round(low, 6), round(high if high > low else 2 * low, 6)]
 
 
+def tangent_patches(surface):
+    """Central-difference tangents and signed height departures on two local patches.
+
+    This measures the displayed 2D slice, not intrinsic full-manifold curvature.
+    Keeping signed departures lets playback evaluate the maximum after temporal
+    interpolation rather than incorrectly interpolating precomputed maxima.
+    """
+    surface = np.asarray(surface, dtype=float)
+    n, m, _ = surface.shape
+    if min(n, m) < 5 or not np.isfinite(surface).all():
+        raise ValueError("Tangent patches need a finite grid with at least five points per side")
+    radius = max(1, min(4, (min(n, m) - 1) // 8))
+    patches = []
+    for fi, fj in ((0.30, 0.25), (0.70, 0.75)):
+        i = int(np.clip(round(fi * (n - 1)), radius, n - radius - 1))
+        j = int(np.clip(round(fj * (m - 1)), radius, m - radius - 1))
+        p = surface[i, j]
+        u = (surface[i, j + 1] - surface[i, j - 1]) / 2
+        v = (surface[i + 1, j] - surface[i - 1, j]) / 2
+        offsets = np.arange(-radius, radius + 1)
+        dj, di = np.meshgrid(offsets, offsets)
+        plane = p + dj[..., None] * u + di[..., None] * v
+        local = surface[i - radius : i + radius + 1, j - radius : j + radius + 1]
+        np.testing.assert_allclose(local[..., :2], plane[..., :2], atol=1e-10)
+        patches.append({
+            "p": p.tolist(), "u": (radius * u).tolist(), "v": (radius * v).tolist(),
+            "departures": (local[..., 2] - plane[..., 2]).ravel().tolist(),
+        })
+    return patches
+
+
 def write_html(
     days,
     path,
@@ -833,6 +974,19 @@ def write_html(
     note="",
     finale=0.0,
     rescale=None,
+    fixed_camera=False,
+    axis_units=None,
+    local_line_note="",
+    steady_surfaces=False,
+    vertical_ranges=None,
+    compact_hud=False,
+    axes=None,
+    view_note="",
+    sheet_names=None,
+    sheet_symbols=None,
+    top_sheet="market",
+    show_warnings=True,
+    tangent_planes=False,
 ):
     """Self-contained WebGL movie page: holds on each day, then glides to the next.
 
@@ -856,6 +1010,7 @@ def write_html(
         when = pd.Timestamp(date)
         day = {
             "date": labels[k] if labels else f"{when:%b} {when.day}, {when.year}",
+            "warning": days[k].get("warning", ""),
             "lines": [
                 {
                     "s": point(line["start"]),
@@ -871,6 +1026,8 @@ def write_html(
             day[key] = grid(sheets[key][k])
             if alphas[key] is not None:
                 day[key + "Alpha"] = np.round(alphas[key][k], 3).tolist()
+        if tangent_planes:
+            day["tangents"] = tangent_patches(sheets["heston"][k])
         payload.append(day)
     flow = movie_seconds(len(days), hold, move)
     shown = [line["distance"] for day in lines for line in day if line["visible"] >= 0.5]
@@ -884,9 +1041,22 @@ def write_html(
         "flow": flow,
         "finale": finale,
         "rescale": rescale,
+        "fixedCamera": fixed_camera,
+        "axisUnits": axis_units,
+        "localLineNote": local_line_note,
+        "steadySurfaces": steady_surfaces,
+        "verticalRanges": vertical_ranges,
+        "compactHud": compact_hud,
+        "viewNote": view_note,
+        "sheetNames": sheet_names,
+        "sheetSymbols": sheet_symbols,
+        "topSheet": top_sheet,
+        "showWarnings": show_warnings,
+        "tangentPlanes": tangent_planes,
+        "tangentReveal": 0.5,
         "gapScale": gap_scale(shown),
         "seconds": flow + finale,
-        "axes": ["slice direction 1", "slice direction 2", "gap"],
+        "axes": axes or ["slice direction 1", "slice direction 2", "gap"],
     }
     first, last = pd.Timestamp(dates[0]).date(), pd.Timestamp(dates[-1]).date()
     html = (

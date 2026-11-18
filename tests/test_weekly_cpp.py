@@ -112,6 +112,23 @@ def test_synthetic_pipeline_is_resumable_and_records_accuracy_flags(tmp_path):
     assert report["rows"][0]["checks"]["detailed_checks_performed"]
     assert (out / "animation.html").exists()
     assert "cdn.jsdelivr.net" not in (out / "animation.html").read_text()
+    import re
+
+    data = json.loads(
+        re.search(r"^const D = (.*);$", (out / "animation.html").read_text(), re.M)[1]
+    )
+    assert not data["fixedCamera"] and "zoomCycle" not in data
+    assert data["steadySurfaces"]  # Camera motion must not make lines or sheets fade.
+    assert (
+        data["reveal"] == 0.25
+    )  # Labels have their own timeline, independent of surface visibility.
+    assert data["viewNote"] == "" and data["sheetNames"] is None
+    assert data["axes"][2] == "gap" and data["axisUnits"][2] == "USD/bbl"
+    assert data["compactHud"] and len(data["verticalRanges"]) == 2
+    assert not data["showWarnings"]
+    assert data["tangentPlanes"] and data["tangentReveal"] == 0.5
+    assert all(len(day["tangents"]) == 2 for day in data["days"])
+    assert "ZOOMING IN" not in (out / "animation.html").read_text()
     from hestonlab.weekly_pipeline import run
 
     assert run(out, no_video=True) == 0
@@ -139,3 +156,51 @@ def test_configuration_rejects_silent_budget_and_geometry_changes():
         replace(Config(), surface_grid=10)
     with pytest.raises(ValueError, match="chronological"):
         replace(Config(), history=20)
+
+
+def test_quarter_stage_stops_and_remaining_restores_checkpoint_state(tmp_path, monkeypatch):
+    from hestonlab import weekly_pipeline as pipeline
+    from hestonlab import manifold_movie
+
+    dates = np.array([str(d.date()) for d in pd.date_range("2022-01-07", periods=9, freq="W-FRI")])
+    panel = {"dates": dates, "weekly_indices": np.arange(9)}
+    monkeypatch.setattr(
+        pipeline, "load_prepared", lambda out: (Config(), {"fingerprint": "test"}, None, panel)
+    )
+    monkeypatch.setattr(pipeline, "daily_spot_checks", lambda *args: [])
+    monkeypatch.setattr(manifold_movie, "render", lambda *args, **kwargs: None)
+    calls = []
+
+    def compute(pricer, panel, index, config, deadline, previous, axes, **kwargs):
+        if index:
+            np.testing.assert_array_equal(previous, np.full(5, index - 1))
+            np.testing.assert_array_equal(axes, np.full((21, 2), index - 1))
+        calls.append(index)
+        return {"date": str(dates[index]), "refined": False, "flags": []}, {
+            "unit": np.full(5, index),
+            "axes": np.full((21, 2), index),
+        }
+
+    monkeypatch.setattr(pipeline, "compute_week", compute)
+    assert pipeline.stage_count(209, "first-quarter") == 53
+    assert pipeline.worker(tmp_path, no_video=True, stage="first-quarter") == 0
+    assert calls == [0, 1, 2]
+    review = tmp_path / "stages/first-quarter/report.json"
+    first = json.loads(review.read_text())
+    assert first["stage_complete"] and first["completed_weeks"] == 3
+    assert first["total_weeks"] == 9
+    assert pipeline.worker(tmp_path, no_video=True, stage="remaining") == 0
+    assert calls == list(range(9))  # The first three were read, never recomputed.
+    assert json.loads(review.read_text()) == first
+    assert json.loads((tmp_path / "report.json").read_text())["completed_weeks"] == 9
+
+
+def test_remaining_refuses_missing_first_quarter_before_computing(tmp_path, monkeypatch):
+    from hestonlab import weekly_pipeline as pipeline
+
+    panel = {"dates": np.array(["2022-01-07"]), "weekly_indices": np.array([0])}
+    monkeypatch.setattr(
+        pipeline, "load_prepared", lambda out: (Config(), {"fingerprint": "test"}, None, panel)
+    )
+    with pytest.raises(ValueError, match="intact first quarter"):
+        pipeline.worker(tmp_path, stage="remaining")

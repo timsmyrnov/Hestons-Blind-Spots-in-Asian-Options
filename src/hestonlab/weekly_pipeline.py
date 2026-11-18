@@ -420,9 +420,24 @@ def daily_spot_checks(out, preflight, panel, config, pricer, records, deadline):
     return result
 
 
-def worker(out, no_video=False):
+def stage_count(total, stage):
+    if stage not in ("all", "first-quarter", "remaining"):
+        raise ValueError(f"Unknown run stage: {stage}")
+    return (total + 3) // 4 if stage == "first-quarter" else total
+
+
+def worker(out, no_video=False, stage="all"):
     out = Path(out)
     config, preflight, pricer, panel = load_prepared(out)
+    target_weeks = stage_count(len(panel["weekly_indices"]), stage)
+    if stage == "remaining":
+        quarter = stage_count(len(panel["weekly_indices"]), "first-quarter")
+        for index in panel["weekly_indices"][:quarter]:
+            date = str(panel["dates"][index])
+            if cached_week(out, preflight["fingerprint"], date) is None:
+                raise ValueError(
+                    f"Remaining stage requires an intact first quarter; missing {date}"
+                )
     started = time.monotonic()
     # Parent supplies remaining global time, including worker startup and input checks.
     available = float(os.environ.get("HESTON_RUN_REMAINING", config.budget_seconds))
@@ -433,7 +448,7 @@ def worker(out, no_video=False):
     error = None
     daily = []
     try:
-        for number, index in enumerate(panel["weekly_indices"]):
+        for number, index in enumerate(panel["weekly_indices"][:target_weeks]):
             Budget(deadline, 1).check()
             date = str(panel["dates"][index])
             cached = cached_week(out, preflight["fingerprint"], date)
@@ -463,6 +478,8 @@ def worker(out, no_video=False):
                     "fingerprint": preflight["fingerprint"],
                     "completed_weeks": len(records),
                     "total_weeks": len(panel["weekly_indices"]),
+                    "stage": stage,
+                    "stage_target_weeks": target_weeks,
                     "last_date": date,
                     "elapsed_seconds": time.monotonic() - started,
                 },
@@ -486,6 +503,9 @@ def worker(out, no_video=False):
         "fingerprint": preflight["fingerprint"],
         "completed_weeks": len(records),
         "total_weeks": len(panel["weekly_indices"]),
+        "stage": stage,
+        "stage_target_weeks": target_weeks,
+        "stage_complete": status.startswith("computed") and len(records) == target_weeks,
         "elapsed_seconds": time.monotonic() - started,
         "rows": records,
         "daily_checks": daily,
@@ -506,13 +526,32 @@ def worker(out, no_video=False):
             report["render_error"] = f"{type(exc).__name__}: {exc}"
     report["elapsed_seconds"] = time.monotonic() - started
     write_json(out / "report.json", report)
+    if stage == "first-quarter":
+        # Preserve review artifacts when the remaining stage later writes the full report/video.
+        import shutil
+
+        review = out / "stages" / "first-quarter"
+        review.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "report.json",
+            "daily_checks.json",
+            "animation.html",
+            "animation.mp4",
+            "animation_manifest.json",
+        ):
+            source = out / name
+            if source.exists():
+                shutil.copy2(source, review / name)
+        if (out / "assets").exists():
+            shutil.copytree(out / "assets", review / "assets", dirs_exist_ok=True)
     return 0 if status.startswith("computed") and report["rendering"] != "failed" else 2
 
 
-def run(out, no_video=False):
+def run(out, no_video=False, stage="all"):
     """Explicit execution entry point; a parent watchdog bounds the entire worker group."""
     out = Path(out).resolve()
     config = Config.read(out / "config.json")
+    stage_count(0, stage)
     out.mkdir(parents=True, exist_ok=True)
     lock = out / "run.lock"
     try:
@@ -523,7 +562,16 @@ def run(out, no_video=False):
         ) from exc
     os.write(fd, str(os.getpid()).encode())
     os.close(fd)
-    command = [sys.executable, "-m", "hestonlab.weekly_pipeline", "_worker", "--out", str(out)]
+    command = [
+        sys.executable,
+        "-m",
+        "hestonlab.weekly_pipeline",
+        "_worker",
+        "--out",
+        str(out),
+        "--stage",
+        stage,
+    ]
     if no_video:
         command.append("--no-video")
     environment = os.environ.copy()
@@ -583,6 +631,7 @@ def run(out, no_video=False):
             out / "execution.json",
             {
                 "exit_code": code,
+                "stage": stage,
                 "elapsed_seconds": time.monotonic() - started,
                 "status": "deadline" if code == 124 else "finished",
             },
@@ -661,6 +710,12 @@ def main(argv=None):
         p = sub.add_parser(name)
         p.add_argument("--out", type=Path, default=Path("outputs/weekly_cpp"))
         p.add_argument("--no-video", action="store_true")
+        p.add_argument(
+            "--stage",
+            choices=("all", "first-quarter", "remaining"),
+            default="all",
+            help="first-quarter stops after ceil(N/4) snapshots; remaining requires their caches",
+        )
     p = sub.add_parser("smoke", help="small synthetic pipeline, not the archive")
     p.add_argument("--out", type=Path, default=Path("outputs/weekly_cpp_smoke"))
     p.add_argument("--video", action="store_true")
@@ -671,7 +726,7 @@ def main(argv=None):
             return 0
         if args.command == "smoke":
             return smoke(args.out, args.video)
-        return (worker if args.command == "_worker" else run)(args.out, args.no_video)
+        return (worker if args.command == "_worker" else run)(args.out, args.no_video, args.stage)
     except (ValueError, FileNotFoundError, RuntimeError) as exc:
         parser.exit(2, f"{exc}\n")
 

@@ -9,13 +9,14 @@ dependencies = ["numpy>=2.2,<3", "pandas>=2.2,<4", "pyarrow>=18,<27", "duckdb==1
 [project.optional-dependencies]
 dev = ["pytest==8.4.2", "ruff==0.14.2", "QuantLib==1.44"]
 animation = ["matplotlib>=3.8,<4", "imageio-ffmpeg>=0.5,<0.7"]
+neural = ["torch>=2.8,<3"]
 [project.scripts]
 hestonlab-data = "hestonlab.data.__main__:main"
 hestonlab-weekly = "hestonlab.weekly_pipeline:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 [tool.setuptools.package-data]
-hestonlab = ["native/*.cpp"]
+hestonlab = ["native/*.cpp", "weekly_heatmap.html"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

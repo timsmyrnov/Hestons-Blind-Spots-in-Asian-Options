@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heston's pricing errors — all contract coordinates</title>
+<style>
+  @font-face { font-family: "CM"; font-weight: 400;
+    src: url(data:font/ttf;base64,__CMR__) format("truetype"); }
+  @font-face { font-family: "CM"; font-weight: 700;
+    src: url(data:font/ttf;base64,__CMB__) format("truetype"); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fafbfc; color: #25384d; font: 16px "CM", serif; }
+  main { max-width: 1800px; margin: auto; padding: 12px 24px 24px; }
+  nav { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 0; }
+  select, button { font: inherit; color: inherit; background: white; border: 1px solid #ccd5df;
+    border-radius: 6px; padding: 8px 12px; }
+  button { cursor: pointer; min-width: 100px; }
+  input[type=range] { flex: 1; min-width: 180px; accent-color: #304e70; }
+  a { color: #304e70; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  canvas { display: block; width: 100%; height: auto; }
+  .hint { margin: 0 0 8px; color: #617084; font-size: 13px; }
+  #tip { position: fixed; display: none; pointer-events: none; background: #fffffff5;
+    border: 1px solid #cbd5df; border-radius: 8px; padding: 14px 16px; line-height: 1.65;
+    box-shadow: 0 6px 24px #20304418; font-variant-numeric: tabular-nums; z-index: 2; }
+  #tip strong { display: block; margin-bottom: 4px; }
+  #tip small { color: #617084; }
+</style>
+<main>
+  <nav aria-label="Heatmap controls">
+    <label>Compare with
+      <select id="mode"><option value="fitted">Market estimates</option>
+        <option value="original">Market data</option></select>
+    </label>
+    <button id="play">Play 15 s</button>
+    <input id="week" type="range" min="0" value="0" aria-label="Selected week">
+    <a href="heatmap.png" download>Figure</a><a href="heatmap_data.csv" download>Data</a>
+  </nav>
+  <p class="hint">Hover for prices. Drag the slider to choose a week.</p>
+  <canvas id="plot" width="1920" height="1080" aria-label="Three heatmaps showing 21 contract price errors across 209 weeks"></canvas>
+</main>
+<div id="tip" role="tooltip"></div>
+<script>
+const D = __DATA__;
+const canvas = document.getElementById('plot'), c = canvas.getContext('2d');
+const select = document.getElementById('mode'), slider = document.getElementById('week');
+const play = document.getElementById('play'), tip = document.getElementById('tip');
+const W = canvas.width, H = canvas.height, last = D.dates.length - 1;
+slider.max = last;
+const boxes = D.layout.map(([x,y,w,h]) => [x*W,y*H,w*W,h*H]);
+const images = {}, clamp = (x,a,b) => Math.min(b,Math.max(a,x));
+let selected = 0, running = false, reveal = false, start = 0, cursor = D.centers[0];
+function xAt(value, box) { return box[0] + (value-D.edges[0])/(D.edges.at(-1)-D.edges[0])*box[2]; }
+function indexAt(value) {
+  let k=0; while (k<last && value>=D.edges[k+1]) k++;
+  return k;
+}
+function draw() {
+  if (!images[select.value]) return;
+  c.drawImage(images[select.value],0,0,W,H);
+  for (const box of boxes) {
+    const [x,y,w,h]=box;
+    if (reveal) {
+      const edge=xAt(D.edges[selected+1],box);
+      c.fillStyle='#f0f3f6'; c.fillRect(edge,y,x+w-edge,h);
+    }
+    const px=xAt(cursor,box);
+    c.strokeStyle='#25384d'; c.lineWidth=2; c.beginPath(); c.moveTo(px,y); c.lineTo(px,y+h); c.stroke();
+    c.fillStyle='#25384d'; c.beginPath(); c.moveTo(px-5,y-8); c.lineTo(px+5,y-8); c.lineTo(px,y-2); c.fill();
+  }
+  c.font='700 25px "CM", serif'; c.fillStyle='#25384d';
+  c.textAlign='right'; c.textBaseline='top'; c.fillText(D.dates[selected],.93*W,.049*H);
+  slider.value=selected;
+}
+function stop() { running=false; play.textContent=`Play ${D.seconds} s`; }
+function tick(now) {
+  if (!running) return;
+  const elapsed=(now-start)/1000, travel=D.seconds-Math.min(1,D.seconds/10);
+  const fraction=clamp(elapsed/travel,0,1);
+  cursor=D.centers[0]+fraction*(D.centers[last]-D.centers[0]);
+  selected=indexAt(cursor); draw();
+  if (elapsed>=D.seconds) { stop(); reveal=false; draw(); }
+  else requestAnimationFrame(tick);
+}
+play.addEventListener('click',()=>{
+  tip.style.display='none';
+  if (running) { stop(); return; }
+  running=true; reveal=true; start=performance.now(); play.textContent='Pause';
+  requestAnimationFrame(tick);
+});
+slider.addEventListener('input',()=>{
+  stop(); reveal=false; selected=Number(slider.value); cursor=D.centers[selected]; draw();
+});
+select.addEventListener('change',()=>{tip.style.display='none'; draw();});
+function cell(event) {
+  const rect=canvas.getBoundingClientRect();
+  const x=(event.clientX-rect.left)/rect.width*W, y=(event.clientY-rect.top)/rect.height*H;
+  for (let t=0;t<boxes.length;t++) {
+    const [bx,by,bw,bh]=boxes[t];
+    if (x<bx || x>=bx+bw || y<by || y>=by+bh) continue;
+    const k=indexAt(D.edges[0]+(x-bx)/bw*(D.edges.at(-1)-D.edges[0]));
+    if (reveal && k>selected) return null;
+    const j=clamp(Math.floor((1-(y-by)/bh)*D.grid.log_moneyness.length),0,D.grid.log_moneyness.length-1);
+    return {k,t,j,q:t*D.grid.log_moneyness.length+j};
+  }
+  return null;
+}
+const money=v=>v.toFixed(6), signed=v=>(v>=0?'+':'')+money(v);
+canvas.addEventListener('pointermove',event=>{
+  const hit=cell(event);
+  if (!hit) {tip.style.display='none';return;}
+  const {k,t,j,q}=hit, level=D.grid.log_moneyness[j], mode=select.value;
+  const error=D[mode+'_error'][k][q], name=mode==='fitted'?'Market estimate':'Market data';
+  tip.innerHTML=`<strong>${D.dates[k]}, maturity ${D.grid.tenors[t]} years</strong>
+    <small>Moneyness: ${(100*Math.exp(level)).toFixed(1)}% of average forward</small><br>
+    Heston: $${money(D.heston[k][q])}/barrel<br>${name}: $${money(D[mode][k][q])}/barrel<br>
+    <b style="color:${error<0?'#175a96':'#bb304a'}">Difference: ${signed(error)} $/barrel</b>`;
+  tip.style.display='block';
+  tip.style.left=clamp(event.clientX+18,8,innerWidth-tip.offsetWidth-8)+'px';
+  tip.style.top=clamp(event.clientY+18,8,innerHeight-tip.offsetHeight-8)+'px';
+});
+canvas.addEventListener('pointerleave',()=>tip.style.display='none');
+canvas.addEventListener('click',event=>{
+  const hit=cell(event); if(!hit)return;
+  stop(); reveal=false; selected=hit.k;cursor=D.centers[selected];draw();
+});
+Promise.all([document.fonts.load('400 16px "CM"'), document.fonts.load('700 25px "CM"'),
+  ...Object.entries(D.images).map(([key,src])=>new Promise(resolve=>{
+  const image=new Image();image.onload=()=>{images[key]=image;resolve();};image.src=src;
+}))]).then(()=>{play.textContent=`Play ${D.seconds} s`;draw();});
+</script>
+</html>

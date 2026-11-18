@@ -44,6 +44,34 @@ time budget. A stopped run is not silently extended. Partial results stay marked
 partial. No existing archive, neural output directory or historical movie is
 used as a destination.
 
+## Run in two stages
+
+The first review stage is the first `ceil(N/4)` weekly snapshots: **53 of 209**
+for the current prepared archive. It computes those weeks and their within-stage
+checks, exports a review video/report, and exits. It never automatically starts
+the remaining 156 weeks.
+
+```bash
+python3 scripts/run_weekly.py --stage first-quarter
+# Only after reviewing and approving the pilot:
+python3 scripts/run_weekly.py --stage remaining
+```
+
+Both stages use the same numerical configuration and cache identity. The second
+stage verifies the first-quarter checkpoints and restores their warm start,
+aligned axes and refinement count before computing subsequent weeks. Missing or
+changed first-quarter checkpoints block the remaining stage rather than silently
+replacing reviewed results. The pilot report, HTML and MP4 are preserved under
+`outputs/weekly_cpp/stages/first-quarter/` when the final outputs are generated.
+
+The review should cover gap size versus Monte Carlo uncertainty, optimizer and
+market-support flags, time-step/derivative/mesh checks, intermediate daily checks,
+and whether the two-dimensional slices are readable. Slices are not the entire
+five-dimensional model. Centered smoothing near the pilot's right edge is
+provisional: it will change when later weeks become available, without changing
+the stored unsmoothed prices or gaps. Numerical-method changes require a new
+prepared identity; cosmetic renderer changes do not require new fits.
+
 ## Configuration
 
 `configs/weekly_cpp.json` is copied to `outputs/weekly_cpp/config.json` by
@@ -93,8 +121,8 @@ market-model error and market-grid approximation are different quantities.
   movies coincide. Failed or unconverged checks are not marked passed.
 - Unsupported market targets, negative projected market prices, unresolved
   directions, noisy gaps, unstable prices and failed local searches are recorded
-  individually. Geometry may be hidden or unavailable; missing research results
-  are not replaced with invented daily fits.
+  individually. The stable display keeps model continuations visible with support
+  warnings; missing research results are not replaced with invented daily fits.
 
 `screened` means the implemented checks passed for that snapshot, not proven
 accuracy or a global minimum. Detailed checks are sampled, not run on every week.
@@ -123,17 +151,96 @@ an atomic NPZ followed by its JSON commit marker, and its checksum is verified
 before reuse. Warm starts and axes are restored from the preceding cache.
 Renderer changes do not require refitting numerical results.
 
-Re-render only:
+Re-render only; the current video always goes to `outputs/animation.mp4`:
 
 ```bash
 PYTHONPATH=src python3 -m hestonlab.manifold_movie --out outputs/weekly_cpp
-# WebGL page only:
+# Browser version only, at outputs/animation.html:
 PYTHONPATH=src python3 -m hestonlab.manifold_movie --out outputs/weekly_cpp --no-video
 ```
+
+Superseded experimental videos are consolidated in `outputs/animation-history.zip`.
+Preview renders belong in a temporary directory. Numerical caches and first-quarter
+review tables remain under `outputs/weekly_cpp`; they are not video variants.
+
+The renderer shows the actual cached Heston slice and the reconstructed market
+polynomial, checking its prices against the cache. No Monte Carlo or Heston
+calibration is run. The blue market centre is anchored at zero and its linear tilt
+is removed from both sheets. A shared vertical reflection places purple Heston
+above it. Purple moves relative to the market; both retain their residual curvature.
+The central gap and every absolute paired vertical separation are preserved.
+There is no curvature amplification or RMS-offset replacement.
+
+The camera orbits at constant distance. Zoom operates through the z-axis: its
+range widens during the first half and tightens during the second. Tick labels
+update accordingly, while market zero stays at a fixed height in the scene.
+Prefix/suffix bounds enclose every mesh vertex, including
+between keyframes. The manifest records all ranges and presentation settings.
+
+The footprint stays fixed on screen. Horizontal axes retain their slice-direction
+names; their coordinates are fractions of the local section, as selected for the
+wider view. Dollar widths are recorded per week. `--window fixed` uses one shared
+dollar-coordinate window instead. `--raw-patches` retains the original diagnostic
+patches, and `--fixed-camera` stops the orbit. `--seconds` and `--fps` control export.
+If a local projection overlaps away from its center, its window is reduced until
+the displayed sheets remain separated. Both models are evaluated at that smaller
+window; no heights or central gaps are changed. Cropped weeks are recorded in the
+manifest. This is a display restriction, not proof that the full manifolds are disjoint.
+
+Sixteen local lines, including four near the corners, label paired full-price RMS differences, not new minimum-error
+calibrations. The central line retains the validated central gap. All numerical
+labels remain unchanged under display transforms. Two-week smoothing is display
+only. Market-support and numerical accuracy flags remain in the research report
+and manifest; neither appears as a label in the video. Both manifold names sit
+outside the same corresponding corner of their sheets.
+
+Error values are hidden for the first quarter of playback. At 6.5 seconds in the
+26-second export, the line labels begin fading in and the headline gap appears.
+The fade completes at 8.06 seconds. Lines are grey before the reveal; all vectors
+then use the same fixed error-colour scale. Both sheets remain visible throughout,
+with subtle blue/purple diagonal gradients. Surface opacity does not control the
+number reveal.
+
+Two translucent green tangent patches on the purple slice fade in from 13 to
+14.56 seconds. Their green callouts report **bend**: the maximum absolute vertical
+departure from the local central-difference tangent over each patch, in mUSD/bbl
+(one thousandth of a dollar per barrel). This is a local slice statistic, not
+intrinsic curvature of the full manifold or a market–Heston error. Patches span
+eight grid intervals per side; local-window dollar widths vary between weeks.
+Signed departures are interpolated before taking the absolute maximum. Camera
+motion and vertical zoom do not affect the values, and no bending is amplified.
 
 Chrome export uses a temporary localhost receiver and an isolated temporary
 browser profile. A restricted execution environment may require local process /
 loopback permission. It does not send market data to an external service.
+
+## Heatmap
+
+```bash
+PYTHONPATH=src python3 -m hestonlab.weekly_heatmap
+```
+
+Writes `outputs/heatmap.mp4` (15 seconds, 1080p/60fps), `heatmap.png`,
+`heatmap.pdf`, `heatmap.html`, `heatmap_data.csv`, and `heatmap_manifest.json`.
+The video reveals all 209 weekly columns over 14 seconds, then holds the complete
+view for one second. All text uses Computer Modern, including the date and browser
+controls. Three panels retain all 21 canonical contract coordinates. Moneyness is
+displayed as strike / average forward in percent: 100% means strike equals the
+average forward. Each panel contains seven levels at one of three maturities.
+
+Cells show signed Heston-minus-market errors in USD/bbl, without smoothing.
+The default reference is the fitted market manifold, matching the cached gap;
+the interactive view can switch to the original interpolated market grid using
+the same Heston fit. Its hover includes both prices and their signed difference.
+The video calls these references market estimates and market data, respectively.
+One symmetric asinh color scale is fixed across dates, panels,
+and reference modes, includes every value without clipping, and expands small
+errors near zero. The CSV retains full precision and numerical flags.
+
+Rendering verifies cache checksums and checks that each week's 21 residuals
+reproduce its saved RMS gap. It does not run pricing or calibration. Use
+`--no-video` for the figure and interactive exports, or `--seconds` / `--fps`
+to change the video length and frame rate.
 
 ## Tests and retirement of the neural implementation
 
